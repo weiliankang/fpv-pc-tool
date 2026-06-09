@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSerialHistory</class>
+ <widget class="QWidget" name="PageSerialHistory">
+  <layout class="QVBoxLayout" name="histMainLayout">
+   <item>
+    <widget class="QGroupBox" name="groupSend">
+     <property name="title">
+      <string>Send History</string>
+     </property>
+     <layout class="QVBoxLayout" name="sendHistLayout">
+      <item>
+       <layout class="QHBoxLayout" name="sendBtnLayout">
+        <item>
+         <widget class="QPushButton" name="btnClearSend">
+          <property name="text">
+           <string>Clear</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnExportSend">
+          <property name="text">
+           <string>Export</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="spSend">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="textSendHistory">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="font">
+         <font>
+          <family>Courier New</family>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupRecv">
+     <property name="title">
+      <string>Receive History</string>
+     </property>
+     <layout class="QVBoxLayout" name="recvHistLayout">
+      <item>
+       <layout class="QHBoxLayout" name="recvHistBtn">
+        <item>
+         <widget class="QPushButton" name="btnClearRecv">
+          <property name="text">
+           <string>Clear</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnExportRecv">
+          <property name="text">
+           <string>Export</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="spRecvHist">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="textRecvHistory">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="font">
+         <font>
+          <family>Courier New</family>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

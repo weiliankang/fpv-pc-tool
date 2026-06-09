@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSerialWireless</class>
+ <widget class="QWidget" name="PageSerialWireless">
+  <layout class="QVBoxLayout" name="wlMainLayout">
+   <item>
+    <widget class="QGroupBox" name="groupFreq">
+     <property name="title">
+      <string>Frequency</string>
+     </property>
+     <layout class="QGridLayout" name="gridFreq">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lbBand">
+        <property name="text">
+         <string>Band:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboBand">
+        <item>
+         <property name="text">
+          <string>BandA (0)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>BandB (1)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>BandC (2)</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lbChan">
+        <property name="text">
+         <string>Channel:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSpinBox" name="spinChannel">
+        <property name="maximum">
+         <number>16</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="lbHop">
+        <property name="text">
+         <string>Mode:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="comboHop">
+        <item>
+         <property name="text">
+          <string>Fixed (0)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Hopping (1)</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="freqBtnLayout">
+        <item>
+         <widget class="QPushButton" name="btnSetFreq">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Set Freq</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnGetFreq">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Get Freq</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0">
+       <widget class="QLabel" name="lbFreqPrev">
+        <property name="text">
+         <string>Preview:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="1">
+       <widget class="QLineEdit" name="editFreqPreview">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupStatus">
+     <property name="title">
+      <string>Status &amp; Parameters</string>
+     </property>
+     <layout class="QVBoxLayout" name="stLayout">
+      <item>
+       <widget class="QPushButton" name="btnGetStatus">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>36</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Get Status (Gnd 0x52)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnGetStatusSky">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>36</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Get Status (Sky 0x55)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnGetDistance">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>36</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>Get Distance (0x56)</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="pwrLayout">
+        <item>
+         <widget class="QLabel" name="lbBbPwr">
+          <property name="text">
+           <string>BB Pwr idx:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="comboBbPwr">
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnGetBbPwr">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>36</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Get BB Pwr (0x53)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnSetBbPwr">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>36</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>Set BB Pwr (0x54)</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="textStatus">
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>200</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

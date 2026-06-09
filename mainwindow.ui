@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1300</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>FPV Debug Tool v1.0</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QHBoxLayout" name="centralLayout">
+    <property name="spacing">
+     <number>0</number>
+    </property>
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item>
+     <widget class="QListWidget" name="listSidebar">
+      <property name="minimumSize">
+       <size>
+        <width>200</width>
+        <height>0</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>200</width>
+        <height>16777215</height>
+       </size>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">QListWidget {
+    background-color: #2c3e50;
+    border: none;
+    outline: none;
+    font-size: 11pt;
+}
+QListWidget::item {
+    color: #ecf0f1;
+    padding: 14px 20px;
+    border: none;
+    border-bottom: 1px solid #34495e;
+}
+QListWidget::item:hover {
+    background-color: #34495e;
+    color: #ffffff;
+    padding-left: 24px;
+}
+QListWidget::item:selected {
+    background-color: #2980b9;
+    color: #ffffff;
+    font-weight: bold;
+    border-left: 4px solid #1abc9c;
+    padding-left: 16px;
+}</string>
+      </property>
+      <item>
+       <property name="text">
+        <string>Firmware</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Serial</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
+        <string>Settings</string>
+       </property>
+      </item>
+     </widget>
+    </item>
+    <item>
+     <widget class="QStackedWidget" name="stackContent"/>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

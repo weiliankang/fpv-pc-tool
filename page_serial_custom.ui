@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSerialCustom</class>
+ <widget class="QWidget" name="PageSerialCustom">
+  <layout class="QVBoxLayout" name="custMainLayout">
+   <item>
+    <widget class="QGroupBox" name="groupTemplate">
+     <property name="title">
+      <string>Templates</string>
+     </property>
+     <layout class="QGridLayout" name="gridTemplate"/>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupInput">
+     <property name="title">
+      <string>Custom Command Input</string>
+     </property>
+     <layout class="QVBoxLayout" name="inputLayout">
+      <item>
+       <widget class="QLabel" name="lbHex">
+        <property name="text">
+         <string>Hex (space separated):</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QTextEdit" name="editCustomInput">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>100</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="checkLayout">
+        <item>
+         <widget class="QPushButton" name="btnCheckFormat">
+          <property name="text">
+           <string>Check Format</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="labelFormatStatus">
+          <property name="text">
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="spCheck">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupSendCtrl">
+     <property name="title">
+      <string>Send Control</string>
+     </property>
+     <layout class="QGridLayout" name="gridSend">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lbCount">
+        <property name="text">
+         <string>Count:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QSpinBox" name="spinSendCount">
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>100</number>
+        </property>
+        <property name="value">
+         <number>1</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lbInterval">
+        <property name="text">
+         <string>Interval(ms):</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QSpinBox" name="spinInterval">
+        <property name="minimum">
+         <number>10</number>
+        </property>
+        <property name="maximum">
+         <number>10000</number>
+        </property>
+        <property name="value">
+         <number>100</number>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QCheckBox" name="checkRepeat">
+        <property name="text">
+         <string>Repeat</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="QPushButton" name="btnSendCustom">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>50</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">QPushButton{background-color:#FF5722;color:white;font-weight:bold;font-size:12pt;}</string>
+        </property>
+        <property name="text">
+         <string>Send Command</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

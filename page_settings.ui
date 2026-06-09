@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSettings</class>
+ <widget class="QWidget" name="PageSettings">
+  <layout class="QVBoxLayout" name="settingsLayout">
+   <item>
+    <widget class="QGroupBox" name="groupLanguage">
+     <property name="title">
+      <string>Language / 语言</string>
+     </property>
+     <layout class="QVBoxLayout" name="langLayout">
+      <item>
+       <layout class="QHBoxLayout" name="langSelectLayout">
+        <item>
+         <widget class="QLabel" name="lbLang">
+          <property name="text">
+           <string>语言 / Language:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="comboLang">
+          <property name="minimumSize">
+           <size>
+            <width>200</width>
+            <height>30</height>
+           </size>
+          </property>
+          <item>
+           <property name="text">
+            <string>中文 (zh_CN)</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>English (en)</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <spacer name="spLang">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelLangNote">
+        <property name="styleSheet">
+         <string notr="true">color: #666; font-style: italic;</string>
+        </property>
+        <property name="text">
+         <string>Restart may be required for language change to fully apply.</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupAbout">
+     <property name="title">
+      <string>About</string>
+     </property>
+     <layout class="QVBoxLayout" name="aboutLayout">
+      <item>
+       <widget class="QLabel" name="labelAboutVer">
+        <property name="text">
+         <string>Version: 1.0.0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelAboutDesc">
+        <property name="text">
+         <string>FPV Debug Tool for wireless system testing and firmware analysis.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer name="spBottom">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

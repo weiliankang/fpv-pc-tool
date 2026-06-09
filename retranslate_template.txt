@@ -1,0 +1,25 @@
+// =====================================================================
+// 翻译刷新
+// =====================================================================
+void MainWindow::retranslateUi() {
+    TRACE;
+
+    // ====== 验证翻译系统 ======
+    QString test = m_translator->tr("btnUp");
+    qDebug() << "[TRACE] tr(btnUp) =" << test;
+    qDebug() << "[TRACE] currentLang =" << m_translator->currentLang();
+    qDebug() << "[TRACE] translator addr =" << m_translator;
+
+    // ====== 直接设置中文（绕过翻译系统验证） ======
+    // 侧边栏
+    int sc = ui->listSidebar->count();
+#if defined(LOAD_FIRMWARE_PAGE)
+    if (sc > 0) ui->listSidebar->item(0)->setText(QStringLiteral("固件解析"));
+#elif defined(LOAD_SERIAL_PAGES)
+    if (sc > 0) ui->listSidebar->item(0)->setText(QStringLiteral("串口工具"));
+#else
+    if (sc > 0) ui->listSidebar->item(0)->setText(QStringLiteral("固件解析"));
+    if (sc > 1) ui->listSidebar->item(1)->setText(QStringLiteral("串口工具"));
+    if (sc > 2) ui->listSidebar->item(2)->setText(QStringLiteral("设置"));
+#endif
+}
