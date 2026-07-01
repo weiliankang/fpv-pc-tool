@@ -13,6 +13,7 @@
 class SerialCommunicator;
 class SerialProtocolHandler;
 class AppTranslator;
+class OsdGridWidget;
 
 // UI namespace (from .ui files)
 namespace Ui {
@@ -23,6 +24,7 @@ class PageSerialKeyControl;
 class PageSerialWireless;
 class PageSerialCustom;
 class PageSerialHistory;
+class PageSerialOsd;
 class PageSettings;
 }
 
@@ -49,6 +51,7 @@ private slots:
     // 串口连接
     void onRefreshPorts();
     void onToggleConnection();
+    void onMockModeToggled(bool checked);
 
     // 按键控制
     void onKeyCommand(const QString &name);
@@ -65,6 +68,16 @@ private slots:
     void onGetStatusSky();
     void onGetDistance();
     void onUpdateFreqPreview();
+
+    // OSD数据
+    void onGetOsdData();
+    void onMockOsdData();
+    void onClearOsd();
+    void onFcTypeChanged(int index);
+    void onAutoPollToggled(bool checked);
+    void onOsdResolutionChanged(int index);
+    void onPollTimer();
+    void onOsdDataReceived(const QByteArray &dataContent);
 
     // 自定义命令
     void onCheckFormat();
@@ -91,6 +104,7 @@ private:
     void logSend(const QString &desc, const QByteArray &packet);
     void updateSerialPageStates();
     bool checkSerialConnected(const QString &actionName);
+    bool loadOsdFont(const QString &fontName, int fontPixel);
     static QString bandToLetter(int band);
 
     void retranslateUi();
@@ -104,6 +118,7 @@ private:
     Ui::PageSerialWireless *uiWireless;
     Ui::PageSerialCustom *uiCustom;
     Ui::PageSerialHistory *uiHistory;
+    Ui::PageSerialOsd *uiOsd;
     Ui::PageSettings *uiSettings;
 
     // 页面 widgets
@@ -113,6 +128,7 @@ private:
     QWidget *m_pageWireless;
     QWidget *m_pageCustom;
     QWidget *m_pageHistory;
+    QWidget *m_pageOsd;
     QWidget *m_pageSettings;
     QTabWidget *m_serialTabs;
 
@@ -120,6 +136,16 @@ private:
     SerialCommunicator *m_comm;
     SerialProtocolHandler *m_protocol;
     QTimer *m_autoRefreshTimer;
+
+    // OSD
+    QTimer *m_osdPollTimer;
+    QByteArray m_osdAccumulated;
+    QByteArray m_osdRawData;       // 累积的原始接收数据
+    OsdGridWidget *m_osdGrid;
+    unsigned short m_osdCharMap[20][53];  // FCOSD_MAX_HEIGHT x FCOSD_MAX_WIDTH
+
+    // 从原始数据中扫描 OSD 数据段，直接渲染到网格
+    void visualizeRawOsdData();
 
     // 翻译
     AppTranslator *m_translator;

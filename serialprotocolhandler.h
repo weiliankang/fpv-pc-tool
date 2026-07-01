@@ -19,6 +19,7 @@ typedef enum {
     WIRELESS_DATA_TYPE_SET_BB_PWR     = 0x54,
     WIRELESS_DATA_TYPE_GET_STATUS_SKY = 0x55,
     WIRELESS_DATA_TYPE_GET_DISTANCE   = 0x56,
+    WIRELESS_DATA_TYPE_GET_OSD_DATA   = 0x57,
 } wireless_data_type_t;
 
 class SerialProtocolHandler : public QObject
@@ -52,6 +53,7 @@ public:
     static constexpr quint8 CMD_SET_BB_PWR       = 0x54;
     static constexpr quint8 CMD_GET_STATUS_SKY   = 0x55;
     static constexpr quint8 CMD_GET_DISTANCE     = 0x56;
+    static constexpr quint8 CMD_GET_OSD_DATA     = 0x57;
 
     // 创建无线命令
     static QByteArray createWirelessCommand(quint8 cmdType, const QByteArray &values);

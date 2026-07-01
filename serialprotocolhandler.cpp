@@ -223,6 +223,19 @@ QString SerialProtocolHandler::parseWirelessResponse(const QByteArray &dataConte
             return QString("距离: %1 米").arg(dist);
         }
         break;
+
+    case CMD_GET_OSD_DATA: // 0x57 OSD数据
+        if (dataContent.size() > 1) {
+            int payloadSize = dataContent.size() - 1;
+            const int displayLen = (payloadSize > 64) ? 64 : payloadSize;
+            QString hexDump;
+            for (int i = 0; i < displayLen; ++i) {
+                hexDump += QString("%1 ").arg(static_cast<quint8>(dataContent.at(1 + i)), 2, 16, QChar('0'));
+            }
+            if (payloadSize > 64) hexDump += "...";
+            return QString("OSD数据: %1 字节\n原始数据前64字节: %2").arg(payloadSize).arg(hexDump);
+        }
+        break;
     }
 
     return QString();

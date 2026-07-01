@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSerialOsd</class>
+ <widget class="QWidget" name="PageSerialOsd">
+  <layout class="QVBoxLayout" name="osdMainLayout">
+   <item>
+    <widget class="QGroupBox" name="groupOsdControl">
+     <property name="title">
+      <string>OSD 数据控制</string>
+     </property>
+     <layout class="QVBoxLayout" name="osdCtrlLayout">
+      <item>
+       <layout class="QHBoxLayout" name="osdBtnLayout">
+        <item>
+         <widget class="QPushButton" name="btnGetOsdData">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>获取 OSD 数据 (0x57)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnMockOsdData">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>🎨 模拟 OSD</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btnClearOsd">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>40</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>清空</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="checkAutoPoll">
+          <property name="text">
+           <string>自动轮询</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="spinPollInterval">
+          <property name="suffix">
+           <string> ms</string>
+          </property>
+          <property name="minimum">
+           <number>100</number>
+          </property>
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+          <property name="value">
+           <number>500</number>
+          </property>
+          <property name="singleStep">
+           <number>100</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="labelFcType">
+          <property name="text">
+           <string>飞控类型:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="cboFcType">
+          <property name="minimumSize">
+           <size>
+            <width>140</width>
+            <height>0</height>
+           </size>
+          </property>
+          <item>
+           <property name="text">
+            <string>Auto</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Betaflight</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>INAV</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>ArduPilot</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Fettec</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>KISS</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>QUIC</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Custom</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="spinCellSize">
+          <property name="prefix">
+           <string>字符大小: </string>
+          </property>
+          <property name="minimum">
+           <number>8</number>
+          </property>
+          <property name="maximum">
+           <number>48</number>
+          </property>
+          <property name="value">
+           <number>18</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="labelResolution">
+          <property name="text">
+           <string>分辨率:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="cboOsdResolution">
+          <property name="minimumSize">
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <item>
+           <property name="text">
+            <string>720p</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>1080p</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QSplitter" name="splitterOsd">
+     <property name="orientation">
+      <enum>Qt::Vertical</enum>
+     </property>
+     <widget class="QGroupBox" name="groupOsdGrid">
+      <property name="title">
+       <string>OSD 可视化视图 (20行 x 53列)</string>
+      </property>
+      <layout class="QVBoxLayout" name="osdGridLayout">
+       <item>
+        <widget class="QWidget" name="widgetOsdCanvas" native="true">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>400</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QGroupBox" name="groupOsdInfo">
+      <property name="title">
+       <string>数据详情</string>
+      </property>
+      <layout class="QVBoxLayout" name="osdInfoLayout">
+       <item>
+        <widget class="QTextEdit" name="textOsdInfo">
+         <property name="readOnly">
+          <bool>true</bool>
+         </property>
+         <property name="font">
+          <font>
+           <family>Consolas</family>
+           <pointsize>9</pointsize>
+          </font>
+         </property>
+         <property name="maximumHeight">
+          <number>150</number>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
