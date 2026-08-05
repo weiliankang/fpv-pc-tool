@@ -303,15 +303,6 @@ void SbusTestPage::onDataReceived(const QByteArray &data)
     if (data.isEmpty()) return;
     m_rxBuffer.append(data);
     m_rxTotalBytes += data.size();
-
-    // 立即将原始字节显示到接收栏（即使帧不完整也能看到数据在流动）
-    QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
-    QString hexLine = QString("[%1] 收到 %2 bytes: %3")
-                          .arg(timestamp)
-                          .arg(data.size())
-                          .arg(QString::fromLatin1(data.toHex(' ').toUpper()));
-    ui->textRecv->append(hexLine);
-    enqueueLogLine(hexLine);
     if (m_lblRxBytes) m_lblRxBytes->setText(QString("接收: %1 bytes").arg(m_rxTotalBytes));
 
     processRxData();
@@ -336,12 +327,30 @@ void SbusTestPage::processRxData()
             }
         }
         if (frameStart < 0) {
-            // No complete frame; drop leading junk up to last possible start position
-            int keepFrom = -1;
-            for (int i = qMax(0, bufSize - SBUS_FRAME_SIZE + 1); i < bufSize; ++i) {
-                if (SbusProtocolParser::isStartByte(raw[i])) { keepFrom = i; break; }
+            // 没有完整可解析的 SBUS 帧。
+            // 如果缓冲已经累积很多字节却始终解不出标准帧，说明很可能是
+            // 波特率不对或设备输出的不是标准 SBUS（25字节）——给出诊断提示，
+            // 并清空缓冲避免无限累积（不再打印原始大块刷屏）。
+            if (bufSize >= SBUS_FRAME_SIZE * 3) {
+                if (!m_warnedNonSbus) {
+                    m_warnedNonSbus = true;
+                    QString tip = QString("[!] 已收到 %1 字节，但无法解析为标准的25字节 SBUS 帧。\n"
+                                          "    请检查：① 波特率是否为 100000 (SBUS专用)；\n"
+                                          "    ② 设备输出的是否为 SBUS（而非 iBUS/CRSF 等）；\n"
+                                          "    ③ 接线/信号反相是否正确。")
+                                      .arg(m_rxTotalBytes);
+                    ui->textRecv->append(tip);
+                    enqueueLogLine(tip);
+                }
+                m_rxBuffer.clear();
+            } else {
+                // 数据还少，保留缓冲等后续补齐；只丢弃确定是杂波的前导字节
+                int keepFrom = -1;
+                for (int i = qMax(0, bufSize - SBUS_FRAME_SIZE + 1); i < bufSize; ++i) {
+                    if (SbusProtocolParser::isStartByte(raw[i])) { keepFrom = i; break; }
+                }
+                if (keepFrom > 0) m_rxBuffer.remove(0, keepFrom);
             }
-            if (keepFrom > 0) m_rxBuffer.remove(0, keepFrom);
             break;
         }
 
@@ -361,6 +370,7 @@ void SbusTestPage::processRxData()
         if (parsed.valid) {
             m_validFrames++;
             m_packetCount++;
+            m_warnedNonSbus = false;   // 解出有效帧，说明协议对了，复位诊断提示
 
             qint64 now = QDateTime::currentMSecsSinceEpoch();
             qint64 intervalMs = (m_lastRxTime > 0) ? (now - m_lastRxTime) : 0;

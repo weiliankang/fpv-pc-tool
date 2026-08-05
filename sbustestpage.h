@@ -93,6 +93,7 @@ private:
 
     int m_stopAtFrameCount = 0;
     bool m_stoppedByLimit = false;
+    bool m_warnedNonSbus = false;
 
     // Analyzer UI (created in ctor)
     QTextEdit *m_analyzerText = nullptr;
