@@ -379,28 +379,38 @@ void SbusTestPage::processRxData()
             // analyzer line
             appendAnalyzerPacket(m_packetCount, parsed, intervalMs);
 
-            // 完整解析包打印到接收栏（16 通道 raw + PWM + 标志位）
+            // 完整解析包打印到接收栏：一包 = 一个完整 SBUS 帧（25字节）
+            // 格式规整为两行：帧信息行 + 16通道值行，方便逐包查看
             QString ts = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
-            QString chRaw, chPwm;
-            for (int i = 0; i < 16; ++i) {
-                chRaw += QString("%1:%2 ").arg(i + 1).arg(parsed.channels[i]);
-                chPwm += QString("%1:%2 ").arg(i + 1).arg(parsed.channelsPwm[i]);
-            }
-            QString parsedLine = QString("[%1] SBUS帧 #%2 %3 (极:%4) 标志=0x%5 ch17=%6 ch18=%7 丢帧=%8 失败保护=%9")
+            QString chRaw;
+            for (int i = 0; i < 16; ++i)
+                chRaw += QString("%1").arg(parsed.channels[i], 4) + " ";
+            QString parsedLine = QString("[%1] ▸ 第%2包 SBUS(极:%3) 间隔%4ms 标志=0x%5 ch17=%6 ch18=%7 丢帧=%8 失败保护=%9")
                                      .arg(ts)
-                                     .arg(m_packetCount)
-                                     .arg(parsed.inverted ? "INV" : "NOR")
+                                     .arg(m_packetCount, 5)
                                      .arg(parsed.inverted ? "反相" : "正相")
+                                     .arg(intervalMs)
                                      .arg(parsed.flagsByte, 2, 16, QLatin1Char('0'))
                                      .arg(parsed.ch17).arg(parsed.ch18)
                                      .arg(parsed.frameLost).arg(parsed.failsafe);
+            QString chLine = QString("      CH: %1| %2| %3| %4| %5| %6| %7| %8")
+                                 .arg(parsed.channels[0], 4).arg(parsed.channels[1], 4)
+                                 .arg(parsed.channels[2], 4).arg(parsed.channels[3], 4)
+                                 .arg(parsed.channels[4], 4).arg(parsed.channels[5], 4)
+                                 .arg(parsed.channels[6], 4).arg(parsed.channels[7], 4)
+                             + QString("\n      CH: %1| %2| %3| %4| %5| %6| %7| %8")
+                                 .arg(parsed.channels[8], 4).arg(parsed.channels[9], 4)
+                                 .arg(parsed.channels[10], 4).arg(parsed.channels[11], 4)
+                                 .arg(parsed.channels[12], 4).arg(parsed.channels[13], 4)
+                                 .arg(parsed.channels[14], 4).arg(parsed.channels[15], 4);
+            QString hexLine = QString("      HEX: %1").arg(parsed.hexDump);
             ui->textRecv->append(parsedLine);
-            ui->textRecv->append("  RAW: " + chRaw.trimmed());
-            ui->textRecv->append("  PWM: " + chPwm.trimmed());
-            ui->textRecv->append("  HEX: " + parsed.hexDump);
+            ui->textRecv->append(chLine);
+            ui->textRecv->append(hexLine);
+            ui->textRecv->append(QString());   // 空行分隔，让每包清晰独立
             enqueueLogLine(parsedLine);
-            enqueueLogLine("  RAW: " + chRaw.trimmed());
-            enqueueLogLine("  PWM: " + chPwm.trimmed());
+            enqueueLogLine(chLine);
+            enqueueLogLine(hexLine);
 
             // flag byte status
             if (m_lblFlags) {
