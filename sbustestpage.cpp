@@ -334,10 +334,11 @@ void SbusTestPage::processRxData()
             if (bufSize >= SBUS_FRAME_SIZE * 3) {
                 if (!m_warnedNonSbus) {
                     m_warnedNonSbus = true;
-                    QString tip = QString("[!] 已收到 %1 字节，但无法解析为标准的25字节 SBUS 帧。\n"
-                                          "    请检查：① 波特率是否为 100000 (SBUS专用)；\n"
-                                          "    ② 设备输出的是否为 SBUS（而非 iBUS/CRSF 等）；\n"
-                                          "    ③ 接线/信号反相是否正确。")
+                    QString tip = QString("[!] 已收到 %1 字节，但无法解析为标准25字节 SBUS 帧。\n"
+                                          "    数据特征: 可能含 CRSF 同步字节(0xC8)或帧长非25字节。\n"
+                                          "    请检查: ① SBUS信号是否接在 UART 的 RX 引脚(TX是输出,收不到外部数据);\n"
+                                          "    ② 波特率100000是否正确; ③ UART是否配置了输入反相(SBUS是反相信号);\n"
+                                          "    ④ 设备输出的是否确实为SBUS(而非CRSF/iBUS等)。")
                                       .arg(m_rxTotalBytes);
                     ui->textRecv->append(tip);
                     enqueueLogLine(tip);
