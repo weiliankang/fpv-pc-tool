@@ -64,11 +64,13 @@ private:
     QString m_logFilePath;
     QQueue<QByteArray> m_logQueue;
     QTimer *m_logFlushTimer = nullptr;
+    QTimer *m_processTimer = nullptr;
     qint64 m_logBytesWritten = 0;
     bool m_logEnabled = false;
 
     void updateConnectionState();
     void processRxData();
+    void onProcessTimer();
     void appendAnalyzerPacket(int seq, const ParsedSbusFrame &parsed, qint64 intervalMs);
     void updateChannelWidget();
     void updateIntervalDisplay();
@@ -100,6 +102,7 @@ private:
     QLabel *m_lblIntervalMax = nullptr;
     QLabel *m_lblIntervalAvg = nullptr;
     QLabel *m_lblFlags = nullptr;
+    QLabel *m_lblRxBytes = nullptr;
 
     CrsfChannelWidget *m_channelWidget = nullptr;
     QTableWidget *m_channelTable = nullptr;

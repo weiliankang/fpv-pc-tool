@@ -78,6 +78,14 @@ SbusTestPage::SbusTestPage(SerialCommunicator *comm, QWidget *parent)
     connect(m_logFlushTimer, &QTimer::timeout, this, &SbusTestPage::flushLogBuffer);
     m_logFlushTimer->start();
 
+    // Frame alignment retry timer: SBUS frames can span multiple serial
+    // callbacks; periodically re-scan the buffer to pick up a completed frame.
+    m_processTimer = new QTimer(this);
+    m_processTimer->setSingleShot(false);
+    m_processTimer->setInterval(10);
+    connect(m_processTimer, &QTimer::timeout, this, &SbusTestPage::onProcessTimer);
+    m_processTimer->start();
+
     // Analyzer UI panels (channel waveform + packet list + flags)
     initAnalyzerUI();
 }
@@ -85,6 +93,7 @@ SbusTestPage::SbusTestPage(SerialCommunicator *comm, QWidget *parent)
 SbusTestPage::~SbusTestPage()
 {
     if (m_logFlushTimer) m_logFlushTimer->stop();
+    if (m_processTimer) m_processTimer->stop();
     closeLogFile();
     delete ui;
 }
@@ -294,6 +303,17 @@ void SbusTestPage::onDataReceived(const QByteArray &data)
     if (data.isEmpty()) return;
     m_rxBuffer.append(data);
     m_rxTotalBytes += data.size();
+
+    // 立即将原始字节显示到接收栏（即使帧不完整也能看到数据在流动）
+    QString timestamp = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+    QString hexLine = QString("[%1] 收到 %2 bytes: %3")
+                          .arg(timestamp)
+                          .arg(data.size())
+                          .arg(QString::fromLatin1(data.toHex(' ').toUpper()));
+    ui->textRecv->append(hexLine);
+    enqueueLogLine(hexLine);
+    if (m_lblRxBytes) m_lblRxBytes->setText(QString("接收: %1 bytes").arg(m_rxTotalBytes));
+
     processRxData();
 }
 
@@ -359,6 +379,29 @@ void SbusTestPage::processRxData()
             // analyzer line
             appendAnalyzerPacket(m_packetCount, parsed, intervalMs);
 
+            // 完整解析包打印到接收栏（16 通道 raw + PWM + 标志位）
+            QString ts = QDateTime::currentDateTime().toString("HH:mm:ss.zzz");
+            QString chRaw, chPwm;
+            for (int i = 0; i < 16; ++i) {
+                chRaw += QString("%1:%2 ").arg(i + 1).arg(parsed.channels[i]);
+                chPwm += QString("%1:%2 ").arg(i + 1).arg(parsed.channelsPwm[i]);
+            }
+            QString parsedLine = QString("[%1] SBUS帧 #%2 %3 (极:%4) 标志=0x%5 ch17=%6 ch18=%7 丢帧=%8 失败保护=%9")
+                                     .arg(ts)
+                                     .arg(m_packetCount)
+                                     .arg(parsed.inverted ? "INV" : "NOR")
+                                     .arg(parsed.inverted ? "反相" : "正相")
+                                     .arg(parsed.flagsByte, 2, 16, QLatin1Char('0'))
+                                     .arg(parsed.ch17).arg(parsed.ch18)
+                                     .arg(parsed.frameLost).arg(parsed.failsafe);
+            ui->textRecv->append(parsedLine);
+            ui->textRecv->append("  RAW: " + chRaw.trimmed());
+            ui->textRecv->append("  PWM: " + chPwm.trimmed());
+            ui->textRecv->append("  HEX: " + parsed.hexDump);
+            enqueueLogLine(parsedLine);
+            enqueueLogLine("  RAW: " + chRaw.trimmed());
+            enqueueLogLine("  PWM: " + chPwm.trimmed());
+
             // flag byte status
             if (m_lblFlags) {
                 QString s = QString("标志: ch17=%1 ch18=%2 丢帧=%3 失败保护=%4")
@@ -375,6 +418,19 @@ void SbusTestPage::processRxData()
         }
     }
     updateIntervalDisplay();
+}
+
+// =====================================================================
+// Periodic re-scan: SBUS frames often span multiple serial callbacks.
+// The buffer may hold a frame whose start byte arrived but whose tail is
+// still pending; re-run processRxData so a just-completed frame is picked
+// up even if onDataReceived isn't triggered again right away.
+// =====================================================================
+void SbusTestPage::onProcessTimer()
+{
+    // Only re-scan when we have data buffered and not already mid-parse.
+    if (m_rxBuffer.size() >= SBUS_FRAME_SIZE)
+        processRxData();
 }
 
 // =====================================================================
@@ -396,11 +452,14 @@ void SbusTestPage::initAnalyzerUI()
     m_lblIntervalMin = new QLabel("最小间隔: --", this);
     m_lblIntervalMax = new QLabel("最大间隔: --", this);
     m_lblIntervalAvg = new QLabel("平均间隔: --", this);
+    m_lblRxBytes = new QLabel("接收: 0 bytes", this);
+    m_lblRxBytes->setStyleSheet("color:#E67E22;font-weight:bold;");
     intervalLayout->addWidget(m_lblIntervalPattern);
     intervalLayout->addWidget(m_lblAnalyzerPktCount);
     intervalLayout->addWidget(m_lblIntervalMin);
     intervalLayout->addWidget(m_lblIntervalMax);
     intervalLayout->addWidget(m_lblIntervalAvg);
+    intervalLayout->addWidget(m_lblRxBytes);
     intervalLayout->addStretch();
 
     QPushButton *btnClearAnalyzer = new QPushButton("清空分析", this);
