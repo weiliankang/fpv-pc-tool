@@ -2,7 +2,6 @@ QT       += core gui widgets serialport
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
-
 TARGET = debug_tool_qt
 TEMPLATE = app
 
@@ -13,7 +12,14 @@ SOURCES += \
     serialcommunicator.cpp \
     firmwareparser.cpp \
     translator.cpp \
-    osdgridwidget.cpp
+    osdgridwidget.cpp \
+    crsftestpage.cpp \
+    crsfprotocolparser.cpp \
+    crsfchannelwidget.cpp \
+    sbustestpage.cpp \
+    sbusprotocolparser.cpp \
+    mavlinktestpage.cpp \
+    mavlinkprotocolparser.cpp
 
 HEADERS += \
     mainwindow.h \
@@ -21,7 +27,14 @@ HEADERS += \
     serialcommunicator.h \
     firmwareparser.h \
     translator.h \
-    osdgridwidget.h
+    osdgridwidget.h \
+    crsftestpage.h \
+    crsfprotocolparser.h \
+    crsfchannelwidget.h \
+    sbustestpage.h \
+    sbusprotocolparser.h \
+    mavlinktestpage.h \
+    mavlinkprotocolparser.h
 
 FORMS += \
     mainwindow.ui \
@@ -32,7 +45,11 @@ FORMS += \
     page_serial_osd.ui \
     page_serial_custom.ui \
     page_serial_history.ui \
+    page_serial_crsftest.ui \
+    page_serial_sbustest.ui \
+    page_serial_mavlinktest.ui \
     page_settings.ui
 
 RESOURCES += osdchars.qrc \
     osdchars720.qrc
+

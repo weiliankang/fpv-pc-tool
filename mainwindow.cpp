@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "ui_page_firmware.h"
 #include "ui_page_serial_connection.h"
@@ -12,6 +12,9 @@
 #include "serialprotocolhandler.h"
 #include "firmwareparser.h"
 #include "osdgridwidget.h"
+#include "crsftestpage.h"
+#include "sbustestpage.h"
+#include "mavlinktestpage.h"
 #include "ui_page_settings.h"
 #include "translator.h"
 
@@ -161,7 +164,6 @@ void MainWindow::loadSerialPages() {
     connect(uiConn->btnRefresh, &QPushButton::clicked, this, &MainWindow::onRefreshPorts);
     connect(uiConn->btnConnect, &QPushButton::clicked, this, &MainWindow::onToggleConnection);
     connect(uiConn->btnClearRecv, &QPushButton::clicked, uiConn->textRecv, &QTextEdit::clear);
-    connect(uiConn->checkMockMode, &QCheckBox::toggled, this, &MainWindow::onMockModeToggled);
 
     setupKeyButtons();
     connect(uiKey->btnSendCustomKey, &QPushButton::clicked, this, &MainWindow::onSendCustomKey);
@@ -232,7 +234,6 @@ void MainWindow::loadSerialPages() {
     memset(m_osdCharMap, 0, sizeof(m_osdCharMap));
 
     connect(uiOsd->btnGetOsdData, &QPushButton::clicked, this, &MainWindow::onGetOsdData);
-    connect(uiOsd->btnMockOsdData, &QPushButton::clicked, this, &MainWindow::onMockOsdData);
     connect(uiOsd->btnClearOsd, &QPushButton::clicked, this, &MainWindow::onClearOsd);
     connect(uiOsd->checkAutoPoll, &QCheckBox::toggled, this, &MainWindow::onAutoPollToggled);
     connect(uiOsd->cboFcType, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -258,6 +259,19 @@ void MainWindow::loadSerialPages() {
     m_serialTabs->addTab(m_pageOsd, QString());
     m_serialTabs->addTab(m_pageCustom, QString());
     m_serialTabs->addTab(m_pageHistory, QString());
+
+    // ---- CRSF 测试页面 ----
+    m_crsfPage = new CrsfTestPage(m_comm, this);
+    // 将 CRSF 测试页作为独立的 widget 加入 stacked widget（串口标签页之后）
+    m_serialTabs->addTab(m_crsfPage, QString());
+
+    // ---- SBUS 测试页面 ----
+    m_sbusPage = new SbusTestPage(m_comm, this);
+    m_serialTabs->addTab(m_sbusPage, QString());
+
+    // ---- MAVLink 测试页面 ----
+    m_mavlinkPage = new MavlinkTestPage(m_comm, this);
+    m_serialTabs->addTab(m_mavlinkPage, QString());
 
     ui->stackContent->addWidget(m_serialTabs);
 
@@ -385,7 +399,6 @@ void MainWindow::retranslateUi() {
     uiOsd->groupOsdGrid->setTitle(QStringLiteral("OSD可视化视图 (20行 x 53列)"));
     uiOsd->groupOsdInfo->setTitle(QStringLiteral("数据详情"));
     uiOsd->btnGetOsdData->setText(QStringLiteral("获取OSD数据 (0x57)"));
-    uiOsd->btnMockOsdData->setText(QStringLiteral("🎨 模拟 OSD"));
     uiOsd->btnClearOsd->setText(QStringLiteral("清空"));
     uiOsd->checkAutoPoll->setText(QStringLiteral("自动轮询"));
     uiOsd->spinPollInterval->setSuffix(QStringLiteral(" ms"));
@@ -422,16 +435,10 @@ void MainWindow::retranslateUi() {
 
     uiConn->btnRefresh->setText(QStringLiteral("刷新"));
     bool connected = m_comm->isConnected();
-    bool mock = m_comm->isMockEnabled();
     uiConn->btnConnect->setText(connected ? QStringLiteral("断开") : QStringLiteral("连接"));
-    if (mock) {
-        uiConn->labelStatus->setText(QStringLiteral("Mock 模式 (模拟串口)"));
-    } else {
-        uiConn->labelStatus->setText(connected ? QStringLiteral("已连接") : QStringLiteral("未连接"));
-    }
+    uiConn->labelStatus->setText(connected ? QStringLiteral("已连接") : QStringLiteral("未连接"));
     uiConn->btnClearRecv->setText(QStringLiteral("清空"));
     uiConn->checkAutoScroll->setText(QStringLiteral("自动滚动"));
-    uiConn->checkMockMode->setText(QStringLiteral("Mock"));
 
     m_serialTabs->setTabText(0, QStringLiteral("连接"));
     m_serialTabs->setTabText(1, QStringLiteral("按键控制"));
@@ -439,6 +446,9 @@ void MainWindow::retranslateUi() {
     m_serialTabs->setTabText(3, QStringLiteral("OSD显示"));
     m_serialTabs->setTabText(4, QStringLiteral("自定义命令"));
     m_serialTabs->setTabText(5, QStringLiteral("历史记录"));
+    m_serialTabs->setTabText(6, QStringLiteral("CRSF测试"));
+    m_serialTabs->setTabText(7, QStringLiteral("SBUS测试"));
+    m_serialTabs->setTabText(8, QStringLiteral("MAVLink测试"));
 
     // 侧边栏
     int sc = ui->listSidebar->count();
@@ -706,38 +716,17 @@ void MainWindow::onClearOsd() {
     memset(m_osdCharMap, 0, sizeof(m_osdCharMap));
     m_osdGrid->clear();
     uiOsd->textOsdInfo->clear();
-    m_osdAccumulated.clear();
-}
-
-void MainWindow::onMockModeToggled(bool checked) {
-    TRACE << "checked=" << checked;
-    m_comm->setMockEnabled(checked);
-    if (checked) {
-        uiConn->labelStatus->setText("Mock 模式 (模拟串口)");
-        uiConn->labelStatus->setStyleSheet("color:orange;font-weight:bold;font-size:12pt;");
-    } else {
-        uiConn->labelStatus->setText("Disconnected");
-        uiConn->labelStatus->setStyleSheet("color:red;font-weight:bold;font-size:12pt;");
-    }
-}
-
-void MainWindow::onMockOsdData() {
-    TRACE;
-    // 先确保 Mock 模式已开启
-    if (!m_comm->isMockEnabled()) {
-        uiConn->checkMockMode->setChecked(true);
-    }
-    // 走完整协议路径：发送请求 → Mock 回复 → 解析 → 显示
-    // 先发送 OSD 请求命令
-    onGetOsdData();
-    // 然后立即触发模拟回复（代替下位机回复）
-    m_comm->triggerMockOsdReply();
-    uiOsd->textOsdInfo->append("\n🎨 模拟 OSD 回复已注入");
+    m_osdReassemblyBuf.clear();
+    m_osdExpectedLen = 0;
 }
 
 void MainWindow::onAutoPollToggled(bool checked) {
     TRACE << "checked=" << checked;
     if (checked) {
+        // 未连接时启动定时器但提示一次，不弹对话框刷屏
+        if (!m_comm->isConnected()) {
+            uiOsd->textOsdInfo->append("⚠ 串口未连接，轮询将在连接后生效");
+        }
         int interval = uiOsd->spinPollInterval->value();
         m_osdPollTimer->start(interval);
         // 立即执行一次
@@ -760,8 +749,24 @@ void MainWindow::onFcTypeChanged(int /*index*/) {
     bool loaded = false;
 
     switch (fcIndex) {
-    case 0: // Auto — 保持当前不变
-        return;
+    case 0: // Auto — 负载均衡：按 Betaflight 处理（最通用）
+        loaded = loadOsdFont(QString("font_bf_%1.png").arg(fontPixel), fontPixel);
+        if (!loaded) {
+            // 回退：尝试所有字体名
+            QStringList fallbacks = {
+                "font_bf_%1.png", "font_inav_%1.png", "font_ardu_%1.png",
+                "font_FTTC%1.png", "font_kiss_%1.png", "WS_QUIC_%1.png"
+            };
+            for (const QString &fb : fallbacks) {
+                QString name = fb.arg(fontPixel);
+                uiOsd->textOsdInfo->append(QString("Auto 尝试: %1").arg(name));
+                if (loadOsdFont(name, fontPixel)) {
+                    loaded = true;
+                    break;
+                }
+            }
+        }
+        break;
     case 1: // Betaflight
         loaded = loadOsdFont(QString("font_bf_%1.png").arg(fontPixel), fontPixel);
         break;
@@ -803,7 +808,9 @@ void MainWindow::onOsdResolutionChanged(int /*index*/) {
 }
 
 void MainWindow::onPollTimer() {
-    onGetOsdData();
+    if (m_comm->isConnected()) {
+        onGetOsdData();
+    }
 }
 
 void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
@@ -820,14 +827,14 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
     // OSD character_map 是 unsigned short 二维数组 (20行 x 53列)
     // 每个 unsigned short = 2 bytes, 小端序
     // 总大小 = 20 * 53 * 2 = 2120 bytes
-    const int expectedMapSize = FCOSD_MAX_HEIGHT * FCOSD_MAX_WIDTH * 2; // 2120
+    const int expectedMapSize = 20 * 53 * 2; // 2120
 
     if (osdPayloadSize >= expectedMapSize) {
         // 解析 character_map
         const quint8 *data = reinterpret_cast<const quint8*>(osdPayload.constData());
-        for (int row = 0; row < FCOSD_MAX_HEIGHT; ++row) {
-            for (int col = 0; col < FCOSD_MAX_WIDTH; ++col) {
-                int idx = row * FCOSD_MAX_WIDTH + col;
+        for (int row = 0; row < 20; ++row) {
+            for (int col = 0; col < 53; ++col) {
+                int idx = row * 53 + col;
                 // 小端 unsigned short
                 quint16 val = data[idx * 2] | (data[idx * 2 + 1] << 8);
                 m_osdCharMap[row][col] = val;
@@ -838,7 +845,7 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
         // 统计非零字符（活跃字符数）
         int activeCount = 0;
         quint16 minVal = 0xFFFF, maxVal = 0;
-        for (int i = 0; i < FCOSD_MAX_HEIGHT * FCOSD_MAX_WIDTH; ++i) {
+        for (int i = 0; i < 20 * 53; ++i) {
             quint16 v = reinterpret_cast<const quint16*>(osdPayload.constData())[i];
             if (v != 0) {
                 activeCount++;
@@ -849,7 +856,7 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
 
         QString info = QString("OSD 可视化视图已更新 | 活跃字符: %1/%2 | 索引范围: %3 ~ %4")
                            .arg(activeCount)
-                           .arg(FCOSD_MAX_HEIGHT * FCOSD_MAX_WIDTH)
+                           .arg(20 * 53)
                            .arg(minVal == 0xFFFF ? 0 : minVal)
                            .arg(maxVal);
         uiOsd->textOsdInfo->setText(info);
@@ -862,14 +869,10 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
                 .arg(osdPayloadSize)
                 .arg(hexStr));
     } else {
-        // 数据大小不对，当作原始数据信息显示
-        QString hexStr = QString::fromLatin1(osdPayload.toHex(' ').toUpper());
-        uiOsd->textOsdInfo->setText(
-            QString("[%1] OSD 数据 (%2 bytes, 预期 %3 bytes)\n%4")
-                .arg(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"))
-                .arg(osdPayloadSize)
-                .arg(expectedMapSize)
-                .arg(hexStr.left(200)));
+        // 数据大小不对（既不是 character_map 也不是简短回复）
+        // 此时 visualizeRawOsdData 已经通过重组缓冲区解析了 MSP 数据
+        // 这里不再重复显示，避免干扰 OSD 信息区
+        qDebug() << "[OSD] onOsdDataReceived: 跳过非 characteristic_map 数据, payloadSize=" << osdPayloadSize;
     }
 }
 
@@ -944,21 +947,24 @@ void MainWindow::onExportRecv() {
 void MainWindow::onDataReceived(const QByteArray &data) {
     TRACE << "size=" << data.size();
 
-    // 把收到的原始数据保存到 m_osdRawData，累加
-    m_osdRawData.append(data);
+    // 把收到的原始数据追加到重组缓冲区
+    m_osdReassemblyBuf.append(data);
 
     QString hexStr = QString::fromLatin1(data.toHex(' ').toUpper());
 
     // 调试：打印原始数据到 qDebug
-    qDebug().noquote() << QString("===== 收到原始数据 %1 bytes =====").arg(data.size());
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss.zzz");
+    qDebug().noquote() << QString("[%1] ===== 收到原始数据 %2 bytes =====")
+                              .arg(timestamp)
+                              .arg(data.size());
     qDebug().noquote() << QString("HEX: %1").arg(hexStr);
-    qDebug().noquote() << QString("累计: %1 bytes").arg(m_osdRawData.size());
+    qDebug().noquote() << QString("累计: %1 bytes").arg(m_osdReassemblyBuf.size());
 
     // 打印到 OSD 信息框
     uiOsd->textOsdInfo->append(QString("[%1] RX: %2 bytes (累计 %3)")
                                    .arg(QDateTime::currentDateTime().toString("HH:mm:ss.zzz"))
                                    .arg(data.size())
-                                   .arg(m_osdRawData.size()));
+                                   .arg(m_osdReassemblyBuf.size()));
 
     uiHistory->textRecvHistory->append(
         QString("[%1] RX: %2")
@@ -972,9 +978,133 @@ void MainWindow::onDataReceived(const QByteArray &data) {
         uiHistory->textRecvHistory->setTextCursor(c);
     }
 
-    // ======== 直接从原始数据可视化 OSD (不依赖协议解析) ========
-    // 放在 return 之前执行，确保即使协议解析失败也能显示
-    visualizeRawOsdData();
+    // ======== MSP 分包重组（容错版） ========
+    // 扫描缓冲区，提取 OSD 数据包
+    // 格式: FE EF cmd(1) lenH(1) lenL(1) [data_content...] [csH csL] [0D 0A]
+    // 关键：不能死等 0D 0A，有时设备不发尾部；只要 data_content 到齐就应该解析
+    m_osdRawData = m_osdReassemblyBuf; // 同步全部缓存数据供 visualizeRawOsdData
+
+    while (m_osdReassemblyBuf.size() >= 7) {
+        // 找 FE EF 头
+        int headerPos = -1;
+        for (int i = 0; i < m_osdReassemblyBuf.size() - 1; ++i) {
+            if ((quint8)m_osdReassemblyBuf.at(i) == 0xFE && (quint8)m_osdReassemblyBuf.at(i + 1) == 0xEF) {
+                headerPos = i;
+                break;
+            }
+        }
+        if (headerPos < 0) {
+            m_osdReassemblyBuf.clear();
+            break;
+        }
+        if (headerPos > 0) {
+            m_osdReassemblyBuf.remove(0, headerPos);
+        }
+
+        const quint8 *raw = reinterpret_cast<const quint8*>(m_osdReassemblyBuf.constData());
+        if (m_osdReassemblyBuf.size() < 9) break;
+
+        if (raw[2] != 0xA2) {
+            m_osdReassemblyBuf.remove(0, 5);
+            continue;
+        }
+        int declaredLen = (raw[3] << 8) | raw[4];
+        if (declaredLen <= 0 || declaredLen > 2048) {
+            m_osdReassemblyBuf.remove(0, 5);
+            continue;
+        }
+
+        // 最少需要的字节：5 (header) + declaredLen (data_content) = data_content 到齐即可
+        int minPktSize = 5 + declaredLen;
+        // 完整包尺寸（含 checksum + footer 2+2）
+        int fullPktSize = minPktSize + 2 + 2;
+
+        // data_content 是否到齐
+        bool contentReady = (m_osdReassemblyBuf.size() >= minPktSize);
+        // 是不是 OSD 包（data_content[0] == 0x57）
+        bool isOsdPkt = (raw[5] == 0x57);
+
+        if (!contentReady) {
+            if (isOsdPkt) {
+                qDebug().noquote() << QString("  ⏳ OSD 数据等待: data_content %1/%2")
+                                      .arg(m_osdReassemblyBuf.size() - 5).arg(declaredLen);
+            }
+            break; // data_content 没到齐，下次再说
+        }
+
+        // data_content 已到齐，确认是不是 OSD
+        if (!isOsdPkt) {
+            // 非 OSD 包，直接移除
+            int removeSize = qMin(fullPktSize, m_osdReassemblyBuf.size());
+            m_osdReassemblyBuf.remove(0, removeSize);
+            continue;
+        }
+
+        // ===== OSD 包！data_content 已到齐，立即解析 =====
+
+        // 校验 checksum
+        // 注意：设备端 OSD 包可能不包含 data_content[0] (cmd_type=0x57)
+        // 所以先尝试全算，不匹配则跳过 cmd_type 再试
+        bool csValid = false;
+        bool footerValid = false;
+        if (m_osdReassemblyBuf.size() >= fullPktSize) {
+
+            // 有完整的包（含 checksum + 0D 0A），可以做校验
+            quint16 calcCs = 0;
+            for (int i = 0; i < declaredLen; i++) {
+                calcCs += raw[5 + i];
+            }
+            quint16 pktCs = (raw[minPktSize] << 8) | raw[minPktSize + 1];
+            csValid = (calcCs == pktCs);
+            if (!csValid && declaredLen >= 2) {
+                // 兼容：跳过 data_content[0] (cmd_type) 再算一次
+                calcCs = 0;
+                for (int i = 1; i < declaredLen; i++) {
+                    calcCs += raw[5 + i];
+                }
+                csValid = (calcCs == pktCs);
+            }
+
+            footerValid = (raw[minPktSize + 2] == 0x0D && raw[minPktSize + 3] == 0x0A);
+            qDebug().noquote() << QString("  checksum: calc=0x%1 pkt=0x%2 %3, footer 0D 0A: %4")
+                                  .arg(calcCs, 4, 16, QChar('0'))
+                                  .arg(pktCs, 4, 16, QChar('0'))
+                                  .arg(csValid ? "✓" : "✗")
+                                  .arg(footerValid ? "✓" : "✗");
+        } else {
+            // 只有 data_content 到齐但尾部还没到，继续等待完整包
+            qDebug().noquote() << QString("  ⏳ 等待尾部: %1/%2")
+                                  .arg(m_osdReassemblyBuf.size()).arg(fullPktSize);
+            break;
+        }
+
+        if (!csValid) {
+            qDebug().noquote() << "  ⚠ checksum 不匹配，丢弃";
+            int removeSize = qMin(fullPktSize, m_osdReassemblyBuf.size());
+            m_osdReassemblyBuf.remove(0, removeSize);
+            continue;
+        }
+
+        if (!footerValid) {
+            qDebug().noquote() << "  ⚠ 尾部 0D 0A 缺失，丢弃";
+            int removeSize = qMin(fullPktSize, m_osdReassemblyBuf.size());
+            m_osdReassemblyBuf.remove(0, removeSize);
+            continue;
+        }
+
+        qDebug().noquote() << QString("✅ OSD 包校验通过: declaredLen=%1, m_osdReassemblyBuf=%2")
+                              .arg(declaredLen).arg(m_osdReassemblyBuf.size());
+
+        // 用完整的 FE EF A2... 来解析：从 buffer 取 minPktSize 字节
+        QByteArray osdPkt = m_osdReassemblyBuf.mid(0, minPktSize);
+        m_osdRawData = osdPkt;
+
+        // 从重组缓冲区移除已消费的数据
+        m_osdReassemblyBuf.remove(0, fullPktSize);
+
+        visualizeRawOsdData();
+        break;
+    }
 
     // 解析数据包，如果是无线查询响应则显示到 textStatus
     QVariantMap parsed = m_protocol->parsePacket(data);
@@ -1073,8 +1203,7 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             if (osdPayloadSize > 0) {
                 displayText += QString("首字节: 0x%1\n")
                                .arg(static_cast<quint8>(content.at(1)), 2, 16, QChar('0'));
-                // 发送到 OSD 页面进行详细显示
-                onOsdDataReceived(content);
+                // OSD 可视化已由 visualizeRawOsdData 处理，不再重复调用 onOsdDataReceived
             }
         }
         break;
@@ -1173,8 +1302,7 @@ bool MainWindow::loadOsdFont(const QString &fontName, int fontPixel) {
 }
 
 bool MainWindow::checkSerialConnected(const QString &actionName) {
-    // Mock 模式下视为已连接
-    if (m_comm->isMockEnabled() || m_comm->isConnected()) {
+    if (m_comm->isConnected()) {
         return false;
     }
     TRACE << "BLOCKED:" << actionName << "- not connected";
@@ -1260,15 +1388,35 @@ void MainWindow::visualizeRawOsdData()
         qDebug().noquote() << "  osd数据头:" << headerHex;
 
         // 跳过 MSP V2 头部 ($X> 或 $XM 开头)
-        // 格式: $X > [flags(1)] [len(2) little-endian] [cmd(2)]
-        // 或   $X M [flags(1)] [len(2) little-endian] [cmd(2)]
+        // MSP V2 over-the-air 格式:
+        //   $X > [flags(1)] [cmd(2) LE] [len(2) LE] [payload...] [crc(1)]
+        //   $X M [flags(1)] [cmd(2) LE] [len(2) LE] [payload...]
+        // cmd=0x00B6=182 = MSP_CMD_DISPLAYPORT
         int dataStart = 0;
-        if (osdSize >= 8 && osd[0] == 0x24 && osd[1] == 0x58) {
-            // $X 头部: 2 + 1 + 1 + 2 + 2 = 8 字节
+        bool hasMspV2Crc = false;
+        int mspV2PayloadLen = 0;
+        if (osdSize >= 9 && osd[0] == 0x24 && osd[1] == 0x58) {
+            // $X 头部: 2(sig) + 1(dir) + 1(flags) + 2(cmd_LE) + 2(len_LE) = 8
             dataStart = 8;
-            int mspLen = osd[3] | (osd[4] << 8); // 小端
-            int mspCmd = osd[5] | (osd[6] << 8); // 小端
-            qDebug().noquote() << QString("  跳过 MSP V2 头: len=%1 cmd=0x%2").arg(mspLen).arg(mspCmd, 4, 16, QChar('0'));
+            int mspCmd = osd[3] | (osd[4] << 8);   // cmd LE
+            mspV2PayloadLen = osd[5] | (osd[6] << 8); // len LE
+            // MSP V2 inbound (0x3E='>') 末尾有 1 byte CRC
+            if (osd[2] == 0x3E) {
+                hasMspV2Crc = true;
+            }
+            qDebug().noquote() << QString("  跳过 MSP V2 头: cmd=0x%1 len=%2 crc=%3")
+                                  .arg(mspCmd, 4, 16, QChar('0'))
+                                  .arg(mspV2PayloadLen)
+                                  .arg(hasMspV2Crc ? "yes" : "no");
+        }
+
+        // 如果 MSP V2 包末尾有 CRC 字节，则截掉它以免被误解析为子命令
+        int maxParseEnd = osdSize;
+        if (hasMspV2Crc && mspV2PayloadLen > 0) {
+            int supposedEnd = dataStart + mspV2PayloadLen;
+            if (supposedEnd < maxParseEnd) {
+                maxParseEnd = supposedEnd;
+            }
         }
 
         // 解析 MSP DISPLAYPORT 格式的 OSD 数据
@@ -1277,28 +1425,31 @@ void MainWindow::visualizeRawOsdData()
         //   0x05 [row] [col] [attr] [chars...]  -- MSP_DISPLAY_TEXT (不带 len!)
         //   0x09 DRAW_SCREEN
         //   0x0A CLEAR_SCREEN
+        //
+        // attrib mask: SDK 使用 & 0x03 (低位2bit 映射到 font page)
+        //             必须是 (rawAttr & 0x03) << 8，而不是 0x0f
         int parsedCount = 0;
         int p = dataStart;
 
-        while (p < osdSize) {
+        while (p < maxParseEnd) {
             quint8 subcmd = osd[p];
 
             if (subcmd == 0x35) {
                 // MSP_DISPLAY_DRAW_NORMAL_FULL_PKT
-                if (p + 7 > osdSize) break;
+                if (p + 7 > maxParseEnd) break;
                 int entryStart = p + 3; // 跳过 0x35 [seq] [rsv]
                 int entryPos = entryStart;
-                while (entryPos + 4 <= osdSize) {
+                while (entryPos + 4 <= maxParseEnd) {
                     int entryLen = osd[entryPos];
                     if (entryLen < 4) break;
                     int textLen = entryLen - 4;
-                    if (entryPos + entryLen > osdSize) break;
+                    if (entryPos + entryLen > maxParseEnd) break;
                     int row = osd[entryPos + 1];
                     int col = osd[entryPos + 2];
                     int rawAttr = osd[entryPos + 3];
-                    unsigned short attrs = (rawAttr & 0x0f) << 8;
-                    if (row >= 0 && row < FCOSD_MAX_HEIGHT && col >= 0 && col < FCOSD_MAX_WIDTH) {
-                        for (int i = 0; i < textLen && (col + i) < FCOSD_MAX_WIDTH; ++i) {
+                    unsigned short attrs = (rawAttr & 0x03) << 8;  // SDK: & 0x03
+                    if (row >= 0 && row < 20 && col >= 0 && col < 53) {
+                        for (int i = 0; i < textLen && (col + i) < 53; ++i) {
                             m_osdCharMap[row][col + i] = osd[entryPos + 4 + i] | attrs;
                         }
                         parsedCount++;
@@ -1309,24 +1460,23 @@ void MainWindow::visualizeRawOsdData()
             }
             else if (subcmd == 0x05) {
                 // MSP_DISPLAY_TEXT: 0x05 [row] [col] [attr] [chars...]
-                // 注意: 0x05 子命令不带 len 字段！文本直到遇到下一个子命令或 0x00 结束
-                // 简化解法: 先取前4字节(05+row+col+attr)，剩余直到下一个子命令都是文本
-                if (p + 4 > osdSize) break;
+                // SDK 处理: attrs = ((msg->payload[3] & 0x03) << 8)
+                if (p + 4 > maxParseEnd) break;
                 int row = osd[p + 1];
                 int col = osd[p + 2];
                 int rawAttr = osd[p + 3];
-                unsigned short attrs = (rawAttr & 0x0f) << 8;
-                // 文本从 pos+4 开始，直到 osdSize 或下一个子命令开头
+                unsigned short attrs = (rawAttr & 0x03) << 8;  // SDK: & 0x03
+                // 文本从 pos+4 开始，直到 maxParseEnd 或下一个子命令开头
                 int textStart = p + 4;
                 int textEnd;
-                for (textEnd = textStart; textEnd < osdSize; textEnd++) {
+                for (textEnd = textStart; textEnd < maxParseEnd; textEnd++) {
                     quint8 b = osd[textEnd];
                     if (b == 0x00 || b == 0x05 || b == 0x09 || b == 0x0A || b == 0x35 || b >= 0x80)
                         break; // 遇到下一个子命令或非文本字节
                 }
                 int textLen = textEnd - textStart;
-                if (row >= 0 && row < FCOSD_MAX_HEIGHT) {
-                    for (int i = 0; i < textLen && (col + i) < FCOSD_MAX_WIDTH; ++i) {
+                if (row >= 0 && row < 20) {
+                    for (int i = 0; i < textLen && (col + i) < 53; ++i) {
                         m_osdCharMap[row][col + i] = osd[textStart + i] | attrs;
                     }
                     parsedCount++;
@@ -1340,15 +1490,15 @@ void MainWindow::visualizeRawOsdData()
             else if (subcmd >= 4) {
                 // 容错: 尝试按 entry 格式 [len][row][col][attr][chars...]
                 int entryLen = subcmd;
-                if (p + entryLen <= osdSize) {
+                if (p + entryLen <= maxParseEnd) {
                     int textLen = entryLen - 4;
                     if (textLen > 0 && textLen < 60) {
                         int row = osd[p + 1];
                         int col = osd[p + 2];
                         int rawAttr = osd[p + 3];
-                        unsigned short attrs = (rawAttr & 0x0f) << 8;
-                        if (row >= 0 && row < FCOSD_MAX_HEIGHT && col >= 0 && col < FCOSD_MAX_WIDTH) {
-                            for (int i = 0; i < textLen && (col + i) < FCOSD_MAX_WIDTH; ++i) {
+                        unsigned short attrs = (rawAttr & 0x03) << 8;  // SDK: & 0x03
+                        if (row >= 0 && row < 20 && col >= 0 && col < 53) {
+                            for (int i = 0; i < textLen && (col + i) < 53; ++i) {
                                 m_osdCharMap[row][col + i] = osd[p + 4 + i] | attrs;
                             }
                             parsedCount++;
@@ -1368,9 +1518,9 @@ void MainWindow::visualizeRawOsdData()
             // 打印 OSD 内容
             qDebug().noquote() << QString("  ✅ 解析了 %1 个条目").arg(parsedCount);
             qDebug().noquote() << "--- OSD 内容 ---";
-            for (int row = 0; row < FCOSD_MAX_HEIGHT; ++row) {
+            for (int row = 0; row < 20; ++row) {
                 QString line;
-                for (int col = 0; col < FCOSD_MAX_WIDTH; ++col) {
+                for (int col = 0; col < 53; ++col) {
                     unsigned short v = m_osdCharMap[row][col];
                     if ((v & 0xFF) >= 0x20 && (v & 0xFF) <= 0x7E)
                         line += QChar(v & 0xFF);
@@ -1387,9 +1537,24 @@ void MainWindow::visualizeRawOsdData()
             m_osdGrid->setCharacterMap(m_osdCharMap);
             uiOsd->textOsdInfo->append(
                 QString("✅ OSD: %1 条目 (%2 bytes)").arg(parsedCount).arg(osdSize));
+
+            // 清理已处理的原始数据，避免下次重复解析
+            // 注意：只有 parsedCount > 0 而且 osdSize 是完整的 payload 时才清理
+            // 如果消费量明显小于总包大小，说明可能不是完整包，不清理
+            int consumed = payloadStart + osdSize;
+            if (consumed >= m_osdRawData.size()) {
+                m_osdRawData.clear();
+            } else {
+                // 残余字节多半是 checksum + footer，保留也无害，直接清掉
+                m_osdRawData.clear();
+            }
             return;
         }
     }
 
     qDebug().noquote() << "未找到 OSD 数据包，当前" << m_osdRawData.size() << "bytes";
 }
+
+
+
+

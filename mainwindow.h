@@ -1,4 +1,4 @@
-#ifndef MAINWINDOW_H
+﻿#ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
 #include <QMainWindow>
@@ -14,6 +14,9 @@ class SerialCommunicator;
 class SerialProtocolHandler;
 class AppTranslator;
 class OsdGridWidget;
+class CrsfTestPage;
+class SbusTestPage;
+class MavlinkTestPage;
 
 // UI namespace (from .ui files)
 namespace Ui {
@@ -51,7 +54,6 @@ private slots:
     // 串口连接
     void onRefreshPorts();
     void onToggleConnection();
-    void onMockModeToggled(bool checked);
 
     // 按键控制
     void onKeyCommand(const QString &name);
@@ -71,7 +73,6 @@ private slots:
 
     // OSD数据
     void onGetOsdData();
-    void onMockOsdData();
     void onClearOsd();
     void onFcTypeChanged(int index);
     void onAutoPollToggled(bool checked);
@@ -137,12 +138,22 @@ private:
     SerialProtocolHandler *m_protocol;
     QTimer *m_autoRefreshTimer;
 
+    // CRSF 测试
+    CrsfTestPage *m_crsfPage = nullptr;
+
+    // SBUS 测试
+    SbusTestPage *m_sbusPage = nullptr;
+
+    // MAVLink 测试
+    MavlinkTestPage *m_mavlinkPage = nullptr;
+
     // OSD
     QTimer *m_osdPollTimer;
-    QByteArray m_osdAccumulated;
     QByteArray m_osdRawData;       // 累积的原始接收数据
+    QByteArray m_osdReassemblyBuf; // MSP分包重组缓冲区
+    int m_osdExpectedLen = 0;      // 期望接收的MSP payload总长度（不含头部）
     OsdGridWidget *m_osdGrid;
-    unsigned short m_osdCharMap[20][53];  // FCOSD_MAX_HEIGHT x FCOSD_MAX_WIDTH
+    unsigned short m_osdCharMap[20][53];  // 20行 x 53列
 
     // 从原始数据中扫描 OSD 数据段，直接渲染到网格
     void visualizeRawOsdData();
@@ -153,3 +164,5 @@ private:
 };
 
 #endif // MAINWINDOW_H
+
+
