@@ -75,6 +75,8 @@ QByteArray SerialProtocolHandler::createWirelessCommand(quint8 dataType, const Q
     switch (dataType) {
     case WIRELESS_DATA_TYPE_SET_CHANNEL_HOP:
     case WIRELESS_DATA_TYPE_SET_BB_PWR:
+    case WIRELESS_DATA_TYPE_SET_RELAY_CHANNEL_HOP:  // 0xA0
+    case WIRELESS_DATA_TYPE_SET_RELAY_BB_PWR:       // 0xA4
         cmdByte = WIRELESS_CMD_SET_CHANNEL;
         break;
     default:
@@ -171,6 +173,14 @@ QString SerialProtocolHandler::parseWirelessResponse(const QByteArray &dataConte
     quint8 cmdType = static_cast<quint8>(dataContent.at(0));
 
     switch (cmdType) {
+    case CMD_SET_CHANNEL_HOP: // 0x50 设置频点回复 (error_payload: cmd_type error_code ...)
+        {
+            int errCode = (dataContent.size() >= 2) ? static_cast<qint8>(dataContent.at(1)) : -1;
+            if (errCode == 0)
+                return QStringLiteral("频点设置完成");
+            return QString("频点设置失败, 错误码=%1").arg(errCode);
+        }
+
     case CMD_GET_CHANNEL_HOP: // 0x51 频点回复
         if (dataContent.size() >= 4) {
             quint8 band     = static_cast<quint8>(dataContent.at(1));
@@ -234,6 +244,86 @@ QString SerialProtocolHandler::parseWirelessResponse(const QByteArray &dataConte
             }
             if (payloadSize > 64) hexDump += "...";
             return QString("OSD数据: %1 字节\n原始数据前64字节: %2").arg(payloadSize).arg(hexDump);
+        }
+        break;
+
+    // ===== 中继(Relay)命令 0xA0-0xA7 =====
+    case CMD_SET_RELAY_CHANNEL_HOP: // 0xA0 设置中继频点 (error_payload: cmd_type error_code ...)
+        {
+            int errCode = (dataContent.size() >= 2) ? static_cast<qint8>(dataContent.at(1)) : -1;
+            if (errCode == 0)
+                return QStringLiteral("中继频点设置完成");
+            return QString("中继频点设置失败, 错误码=%1").arg(errCode);
+        }
+
+    case CMD_GET_RELAY_CHANNEL_HOP: // 0xA1 获取中继频点
+        if (dataContent.size() >= 4) {
+            quint8 band     = static_cast<quint8>(dataContent.at(1));
+            quint8 channel  = static_cast<quint8>(dataContent.at(2));
+            quint8 hop      = static_cast<quint8>(dataContent.at(3));
+            QString bandName = BAND_MAPPING.value(band, QString("未知(%1)").arg(band));
+            QString hopMode  = (hop == 1) ? "跳频" : "定频";
+            return QString("中继频点: %1, Channel=%2, %3").arg(bandName).arg(channel).arg(hopMode);
+        }
+        break;
+
+    case CMD_GET_RELAY_STATUS: // 0xA2 获取中继无线状态
+        // 结构: cmd(0xA2) relay_gnd_rssi[2] relay_sky_rssi[2] relay_ap_bb_connect relay_dev_bb_connect reserved
+        if (dataContent.size() >= 7) {
+            qint8 gndRssi1 = static_cast<qint8>(dataContent.at(1));
+            qint8 gndRssi2 = static_cast<qint8>(dataContent.at(2));
+            qint8 skyRssi1 = static_cast<qint8>(dataContent.at(3));
+            qint8 skyRssi2 = static_cast<qint8>(dataContent.at(4));
+            quint8 apConn  = static_cast<quint8>(dataContent.at(5));
+            quint8 devConn = static_cast<quint8>(dataContent.at(6));
+            return QString("中继状态: 地-RSSI1=%1dB RSSI2=%2dB | 空-RSSI1=%3dB RSSI2=%4dB | AP连接=%5 设备连接=%6")
+                       .arg(gndRssi1).arg(gndRssi2).arg(skyRssi1).arg(skyRssi2)
+                       .arg(apConn ? "是" : "否").arg(devConn ? "是" : "否");
+        }
+        break;
+
+    case CMD_GET_RELAY_BB_PWR: // 0xA3 获取中继BB功率
+        if (dataContent.size() >= 7) {
+            quint8 curIdx = static_cast<quint8>(dataContent.at(1));
+            QString pwrMap;
+            for (int i = 0; i < 4; ++i)
+                pwrMap += QString("%1 ").arg(static_cast<quint8>(dataContent.at(2 + i)));
+            return QString("中继当前功率索引: %1, 功率表: %2").arg(curIdx).arg(pwrMap.trimmed());
+        }
+        break;
+
+    case CMD_SET_RELAY_BB_PWR: // 0xA4 设置中继BB功率回复
+        {
+            int errCode = (dataContent.size() >= 2) ? static_cast<qint8>(dataContent.at(1)) : -1;
+            if (errCode == 0)
+                return QStringLiteral("中继BB功率设置完成");
+            return QString("中继BB功率设置失败, 错误码=%1").arg(errCode);
+        }
+
+    case CMD_GET_RELAY_GND_DISTANCE: // 0xA5 获取中继到地面端距离
+        if (dataContent.size() >= 5) {
+            qint32 dist = *reinterpret_cast<const qint32*>(dataContent.constData() + 1);
+            return QString("中继-地面距离: %1 米").arg(dist);
+        }
+        break;
+
+    case CMD_GET_RELAY_SKY_DISTANCE: // 0xA6 获取中继到天空端距离
+        if (dataContent.size() >= 5) {
+            qint32 dist = *reinterpret_cast<const qint32*>(dataContent.constData() + 1);
+            return QString("中继-天空距离: %1 米").arg(dist);
+        }
+        break;
+
+    case CMD_GET_RELAY_OSD_DATA: // 0xA7 中继OSD数据
+        if (dataContent.size() > 1) {
+            int payloadSize = dataContent.size() - 1;
+            const int displayLen = (payloadSize > 64) ? 64 : payloadSize;
+            QString hexDump;
+            for (int i = 0; i < displayLen; ++i) {
+                hexDump += QString("%1 ").arg(static_cast<quint8>(dataContent.at(1 + i)), 2, 16, QChar('0'));
+            }
+            if (payloadSize > 64) hexDump += "...";
+            return QString("中继OSD数据: %1 字节\n原始数据前64字节: %2").arg(payloadSize).arg(hexDump);
         }
         break;
     }
