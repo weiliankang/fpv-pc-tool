@@ -510,6 +510,24 @@ void MainWindow::loadSerialPages() {
         int curIdx = combo->findData(pwrIdx);
         if (curIdx >= 0) combo->setCurrentIndex(curIdx);
     });
+    // 快捷指令中继频点(0xA1) → 中继频点设置
+    connect(m_f0readPage, &F0ReadPage::relayFreqUpdated, this, [this](int band, int channel, int hop) {
+        uiWireless->comboRelayBand->setCurrentIndex(band);
+        uiWireless->spinRelayChannel->setValue(channel + 1);
+        uiWireless->comboRelayHop->setCurrentIndex(hop);
+    });
+    // 快捷指令中继功率(0xA3) → 中继基带功率
+    connect(m_f0readPage, &F0ReadPage::relayPowerUpdated, this, [this](int pwrIdx, quint32 bitmap) {
+        QComboBox *combo = uiWireless->comboRelayBbPwr;
+        combo->blockSignals(true);
+        combo->clear();
+        for (int i = 0; i < 20; ++i)
+            if (bitmap & (1U << i))
+                combo->addItem(QString::fromUtf8(bbPwrNames[i]), i);
+        combo->blockSignals(false);
+        int curIdx = combo->findData(pwrIdx);
+        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
+    });
 
     m_serialTabs->addTab(makeScrollable(m_pageCustom), QString());
 

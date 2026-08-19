@@ -52,9 +52,10 @@ F0ReadPage::F0ReadPage(SerialCommunicator *comm, QWidget *parent)
     connect(m_pollTimer, &QTimer::timeout, this, &F0ReadPage::onPollTimer);
 
     // 快捷指令批次收尾定时器：收到帧后无新帧一段时间即把本批解析汇总输出
+    // 2500ms：快捷指令会返回地面端+中继端+OSD 共十余条响应，需给足到达时间
     m_batchFlushTimer = new QTimer(this);
     m_batchFlushTimer->setSingleShot(true);
-    m_batchFlushTimer->setInterval(350);
+    m_batchFlushTimer->setInterval(2500);
     connect(m_batchFlushTimer, &QTimer::timeout, this, &F0ReadPage::flushBatchParse);
 
     // ---- OSD 逐帧播放器 ----
@@ -747,19 +748,31 @@ void F0ReadPage::onFrameParsed(const QByteArray &frame)
             batchLogLine(QStringLiteral("解析[%1]: %2").arg(commandName(cmd)).arg(detail));
     }
 
-    // 控件回填：快捷指令数据更新到频率/功率设置
-    //  - 频点(0x51地面 / 0xA1中继) → 频段/通道/模式
-    //  - 功率(0x53地面 / 0xA3中继) → 基带功率
-    if ((cmd == 0x51 || cmd == 0xA1) && payload.size() >= 4) {
+    // 控件回填：快捷指令数据更新到无线参数页(普通/中继完全分离)
+    //  - 0x51 普通频点 → freqUpdated(普通频率设置)
+    //  - 0x53 普通功率 → powerUpdated(普通基带功率)
+    //  - 0xA1 中继频点 → relayFreqUpdated(中继频率设置)
+    //  - 0xA3 中继功率 → relayPowerUpdated(中继基带功率)
+    if (cmd == 0x51 && payload.size() >= 4) {
         emit freqUpdated(static_cast<quint8>(payload.at(1)),
                          static_cast<quint8>(payload.at(2)),
                          static_cast<quint8>(payload.at(3)));
-    } else if ((cmd == 0x53 || cmd == 0xA3) && payload.size() >= 6) {
+    } else if (cmd == 0x53 && payload.size() >= 6) {
         quint32 bitmap = static_cast<quint8>(payload.at(2)) |
                          (static_cast<quint8>(payload.at(3)) << 8) |
                          (static_cast<quint8>(payload.at(4)) << 16) |
                          (static_cast<quint8>(payload.at(5)) << 24);
         emit powerUpdated(static_cast<quint8>(payload.at(1)), bitmap);
+    } else if (cmd == 0xA1 && payload.size() >= 4) {
+        emit relayFreqUpdated(static_cast<quint8>(payload.at(1)),
+                              static_cast<quint8>(payload.at(2)),
+                              static_cast<quint8>(payload.at(3)));
+    } else if (cmd == 0xA3 && payload.size() >= 6) {
+        quint32 bitmap = static_cast<quint8>(payload.at(2)) |
+                         (static_cast<quint8>(payload.at(3)) << 8) |
+                         (static_cast<quint8>(payload.at(4)) << 16) |
+                         (static_cast<quint8>(payload.at(5)) << 24);
+        emit relayPowerUpdated(static_cast<quint8>(payload.at(1)), bitmap);
     }
 
     // 更新顶部状态

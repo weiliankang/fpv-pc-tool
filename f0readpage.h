@@ -47,6 +47,10 @@ signals:
     void freqUpdated(int band, int channel, int hop);
     // 快捷指令收到功率响应(0x53)：当前功率索引 + 可设置位图
     void powerUpdated(int pwrIdx, quint32 bitmap);
+    // 快捷指令收到中继频点响应(0xA1) → 更新中继频点设置
+    void relayFreqUpdated(int band, int channel, int hop);
+    // 快捷指令收到中继功率响应(0xA3) → 更新中继功率设置
+    void relayPowerUpdated(int pwrIdx, quint32 bitmap);
 
 private slots:
     void onSendF0();
