@@ -3,3 +3,8 @@
 *.so
 *.exe
 .DS_Store
+
+# Build output & IDE caches (do not track)
+/build_test/
+*.idx
+

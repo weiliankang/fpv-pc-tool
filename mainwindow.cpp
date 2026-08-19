@@ -714,10 +714,10 @@ void MainWindow::retranslateUi() {
     uiKey->comboPressType->setItemText(1, QStringLiteral("长按 (1)"));
 
     uiWireless->groupFreq->setTitle(QStringLiteral("频点设置"));
-    uiWireless->groupStatus->setTitle(QStringLiteral("状态与参数"));
+    uiWireless->groupStatus->setTitle(QStringLiteral("无线状态与参数"));
     uiWireless->lbBand->setText(QStringLiteral("频段:"));
     uiWireless->lbChan->setText(QStringLiteral("通道:"));
-    uiWireless->lbHop->setText(QStringLiteral("模式:"));
+    uiWireless->lbHop->setText(QStringLiteral("跳频模式:"));
     uiWireless->lbBbPwr->setText(QStringLiteral("基带功率:"));
     uiWireless->btnSetFreq->setText(QStringLiteral("设置频点 (0x50)"));
     uiWireless->btnGetFreq->setText(QStringLiteral("获取频点 (0x51)"));
@@ -742,7 +742,7 @@ void MainWindow::retranslateUi() {
     uiWireless->groupRelay->setTitle(QStringLiteral("中继 (Relay)"));
     uiWireless->lbRelayBand->setText(QStringLiteral("频段:"));
     uiWireless->lbRelayChan->setText(QStringLiteral("通道:"));
-    uiWireless->lbRelayHop->setText(QStringLiteral("模式:"));
+    uiWireless->lbRelayHop->setText(QStringLiteral("跳频模式:"));
     uiWireless->lbRelayBbPwr->setText(QStringLiteral("基带功率:"));
     uiWireless->btnSetRelayFreq->setText(QStringLiteral("设置中继频点 (0xA0)"));
     uiWireless->btnGetRelayFreq->setText(QStringLiteral("获取中继频点 (0xA1)"));
@@ -754,7 +754,7 @@ void MainWindow::retranslateUi() {
     uiWireless->groupOsdData->setTitle(QStringLiteral("OSD数据"));
     uiWireless->btnGetOsdDataWireless->setText(QStringLiteral("获取OSD数据 (0x57)"));
     uiWireless->btnClearOsdDataWireless->setText(QStringLiteral("清空"));
-    uiWireless->groupRelayData->setTitle(QStringLiteral("中继/无线数据打印"));
+    uiWireless->groupRelayData->setTitle(QStringLiteral("直连/中继无线数据打印"));
     uiWireless->groupPreview->setTitle(QStringLiteral("命令预览"));
     uiWireless->lbPreviewHint->setText(QStringLiteral("预览:"));
     uiWireless->comboRelayBand->setItemText(0, QStringLiteral("频段A (0)"));
@@ -1981,12 +1981,12 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             int skyRssi2 = static_cast<signed char>(content.at(4));
             int apConn   = static_cast<quint8>(content.at(5));
             int devConn  = static_cast<quint8>(content.at(6));
-            displayText += QString("地面链路 RSSI1: %1\n").arg(gndRssi1);
-            displayText += QString("地面链路 RSSI2: %1\n").arg(gndRssi2);
-            displayText += QString("天空链路 RSSI1: %1\n").arg(skyRssi1);
-            displayText += QString("天空链路 RSSI2: %1\n").arg(skyRssi2);
-            displayText += QString("AP 基带连接: %1\n").arg(apConn ? QStringLiteral("已连接") : QStringLiteral("未连接"));
-            displayText += QString("设备基带连接: %1\n").arg(devConn ? QStringLiteral("已连接") : QStringLiteral("未连接"));
+            displayText += QString("中继地面地面链路 RSSI1: %1\n").arg(gndRssi1);
+            displayText += QString("中继地面地面链路 RSSI2: %1\n").arg(gndRssi2);
+            displayText += QString("中继天空链路 RSSI1: %1\n").arg(skyRssi1);
+            displayText += QString("中继天空链路 RSSI2: %1\n").arg(skyRssi2);
+            displayText += QString("中继天空连接: %1\n").arg(apConn ? QStringLiteral("已连接") : QStringLiteral("未连接"));
+            displayText += QString("中继地面连接: %1\n").arg(devConn ? QStringLiteral("已连接") : QStringLiteral("未连接"));
         }
         break;
     case 0xA3: // 获取中继BB功率响应
