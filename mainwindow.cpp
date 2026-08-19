@@ -2372,6 +2372,30 @@ void MainWindow::visualizeRawOsdData()
             }
 
             m_osdGrid->setCharacterMap(m_osdCharMap);
+
+            // ---- 在数据详情打印 OSD 20x53 矩阵（快捷指令页 printOsdMatrix 同款格式）----
+            uiOsd->textOsdInfo->append("--- OSD 20x53 矩阵 ---");
+            for (int row = 0; row < 20; ++row) {
+                QString line;
+                bool hasContent = false;
+                for (int col = 0; col < 53; ++col) {
+                    quint16 v = m_osdCharMap[row][col];
+                    quint8 ch = static_cast<quint8>(v & 0xFF);
+                    if (ch == 0) {
+                        line += ' ';
+                    } else if (ch >= 0x20 && ch <= 0x7E) {
+                        line += QChar(ch);
+                        hasContent = true;
+                    } else {
+                        line += QStringLiteral("[%1]").arg(ch, 2, 16, QChar('0'));
+                        hasContent = true;
+                    }
+                }
+                if (hasContent)
+                    uiOsd->textOsdInfo->append(QStringLiteral("R %1: %2").arg(row).arg(line));
+            }
+            uiOsd->textOsdInfo->append("--- 矩阵结束 ---");
+
             uiOsd->textOsdInfo->append(
                 QString("✅ OSD: %1 条目 (%2 bytes)").arg(parsedCount).arg(osdSize));
 

@@ -747,12 +747,14 @@ void F0ReadPage::onFrameParsed(const QByteArray &frame)
             batchLogLine(QStringLiteral("解析[%1]: %2").arg(commandName(cmd)).arg(detail));
     }
 
-    // 控件回填：快捷指令数据更新到频率/功率设置（0x51频点 / 0x53功率）
-    if (cmd == 0x51 && payload.size() >= 4) {
+    // 控件回填：快捷指令数据更新到频率/功率设置
+    //  - 频点(0x51地面 / 0xA1中继) → 频段/通道/模式
+    //  - 功率(0x53地面 / 0xA3中继) → 基带功率
+    if ((cmd == 0x51 || cmd == 0xA1) && payload.size() >= 4) {
         emit freqUpdated(static_cast<quint8>(payload.at(1)),
                          static_cast<quint8>(payload.at(2)),
                          static_cast<quint8>(payload.at(3)));
-    } else if (cmd == 0x53 && payload.size() >= 6) {
+    } else if ((cmd == 0x53 || cmd == 0xA3) && payload.size() >= 6) {
         quint32 bitmap = static_cast<quint8>(payload.at(2)) |
                          (static_cast<quint8>(payload.at(3)) << 8) |
                          (static_cast<quint8>(payload.at(4)) << 16) |
