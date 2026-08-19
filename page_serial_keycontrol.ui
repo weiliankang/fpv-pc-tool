@@ -18,26 +18,44 @@
      </property>
      <layout class="QVBoxLayout" name="dirLayout">
       <item>
-       <widget class="QPushButton" name="btnUp">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>50</height>
-         </size>
+       <layout class="QGridLayout" name="dirGrid">
+        <property name="horizontalSpacing">
+         <number>12</number>
         </property>
-        <property name="text">
-         <string>UP</string>
+        <property name="verticalSpacing">
+         <number>12</number>
         </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="dirMidLayout">
-        <item>
+        <item row="0" column="1">
+         <widget class="QPushButton" name="btnUp">
+          <property name="minimumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>UP</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
          <widget class="QPushButton" name="btnLeft">
           <property name="minimumSize">
            <size>
-            <width>0</width>
-            <height>50</height>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
            </size>
           </property>
           <property name="text">
@@ -45,12 +63,18 @@
           </property>
          </widget>
         </item>
-        <item>
+        <item row="1" column="1">
          <widget class="QPushButton" name="btnOk">
           <property name="minimumSize">
            <size>
-            <width>0</width>
-            <height>50</height>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
            </size>
           </property>
           <property name="text">
@@ -58,12 +82,18 @@
           </property>
          </widget>
         </item>
-        <item>
+        <item row="1" column="2">
          <widget class="QPushButton" name="btnRight">
           <property name="minimumSize">
            <size>
-            <width>0</width>
-            <height>50</height>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
            </size>
           </property>
           <property name="text">
@@ -71,33 +101,39 @@
           </property>
          </widget>
         </item>
+        <item row="2" column="1">
+         <widget class="QPushButton" name="btnDown">
+          <property name="minimumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>135</width>
+            <height>48</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>DOWN</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
       <item>
-       <widget class="QPushButton" name="btnDown">
-        <property name="minimumSize">
+       <spacer name="dirSpacerTop">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
          <size>
-          <width>0</width>
-          <height>50</height>
+          <width>20</width>
+          <height>20</height>
          </size>
         </property>
-        <property name="text">
-         <string>DOWN</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="btnBack">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>50</height>
-         </size>
-        </property>
-        <property name="text">
-         <string>BACK</string>
-        </property>
-       </widget>
+       </spacer>
       </item>
      </layout>
     </widget>
@@ -109,13 +145,30 @@
      </property>
      <layout class="QVBoxLayout" name="funcLayout">
       <item>
-       <widget class="QPushButton" name="btnPair">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
+       <widget class="QPushButton" name="btnBack">
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
+        <property name="text">
+         <string>BACK</string>
         </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnPair">
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
         <property name="text">
          <string>Pair</string>
         </property>
@@ -123,12 +176,14 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnUpdate">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
-        </property>
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
         <property name="text">
          <string>Update</string>
         </property>
@@ -136,12 +191,14 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnRecord">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
-        </property>
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
         <property name="text">
          <string>Record</string>
         </property>
@@ -149,12 +206,14 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnForce720p">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
-        </property>
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
         <property name="text">
          <string>720p60</string>
         </property>
@@ -162,16 +221,31 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnDebug3">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>40</height>
-         </size>
-        </property>
+                 <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>44</height>
+          </size>
+         </property>
+
+        
         <property name="text">
          <string>Debug3</string>
         </property>
        </widget>
+      </item>
+      <item>
+       <spacer name="funcSpacerTop">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>
@@ -190,7 +264,14 @@
        </widget>
       </item>
       <item>
-       <widget class="QComboBox" name="comboKey"/>
+       <widget class="QComboBox" name="comboKey">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>28</height>
+         </size>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QLabel" name="lbPressType">
@@ -201,6 +282,12 @@
       </item>
       <item>
        <widget class="QComboBox" name="comboPressType">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>28</height>
+         </size>
+        </property>
         <item>
          <property name="text">
           <string>Click (0)</string>
@@ -215,6 +302,18 @@
       </item>
       <item>
        <widget class="QPushButton" name="btnSendCustomKey">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>40</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>100</width>
+          <height>40</height>
+         </size>
+        </property>
         <property name="styleSheet">
          <string notr="true">QPushButton{background-color:#2196F3;color:white;font-weight:bold;}</string>
         </property>
@@ -232,10 +331,29 @@
       </item>
       <item>
        <widget class="QLineEdit" name="editKeyPreview">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>28</height>
+         </size>
+        </property>
         <property name="readOnly">
          <bool>true</bool>
         </property>
        </widget>
+      </item>
+      <item>
+       <spacer name="ckSpacerTop">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>

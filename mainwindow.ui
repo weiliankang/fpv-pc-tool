@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>FPV Debug Tool v1.0</string>
+   <string>FPV Debug Tool V2.1.1</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="centralLayout">
@@ -72,12 +72,17 @@ QListWidget::item:selected {
       </property>
       <item>
        <property name="text">
+        <string>Serial</string>
+       </property>
+      </item>
+      <item>
+       <property name="text">
         <string>Firmware</string>
        </property>
       </item>
       <item>
        <property name="text">
-        <string>Serial</string>
+        <string>Package</string>
        </property>
       </item>
       <item>

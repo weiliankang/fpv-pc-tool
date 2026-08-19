@@ -1,0 +1,417 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>PageSerialCrsfTest</class>
+ <widget class="QWidget" name="PageSerialCrsfTest">
+  <layout class="QVBoxLayout" name="crsfMainLayout">
+   <item>
+    <widget class="QGroupBox" name="groupSetup">
+     <property name="title">
+      <string>CRSF 串口连接设置</string>
+     </property>
+     <layout class="QGridLayout" name="gridSetup">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lbPort">
+        <property name="text">
+         <string>端口:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="comboPort"/>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="btnRefresh">
+        <property name="text">
+         <string>刷新</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lbBaud">
+        <property name="text">
+         <string>波特率:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboBaud"/>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="btnConnect">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>40</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>连接</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QLabel" name="labelStatus">
+        <property name="styleSheet">
+         <string notr="true">color:red;font-weight:bold;font-size:12pt;</string>
+        </property>
+        <property name="text">
+         <string>未连接</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="2">
+       <widget class="QPushButton" name="btnClearRecv">
+        <property name="text">
+         <string>清空</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="splitterMain" native="true">
+     <layout class="QHBoxLayout" name="splitterLayout">
+      <item>
+       <widget class="QGroupBox" name="groupSend">
+        <property name="title">
+         <string>发送数据</string>
+        </property>
+        <layout class="QVBoxLayout" name="sendLayout">
+         <item>
+          <widget class="QTextEdit" name="textSend">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>120</height>
+            </size>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>16777215</width>
+             <height>150</height>
+            </size>
+           </property>
+           <property name="font">
+            <font>
+             <family>Courier New</family>
+             <pointsize>10</pointsize>
+            </font>
+           </property>
+           <property name="placeholderText">
+            <string>输入要发送的十六进制数据 (空格分隔)，如: C8 14 00 00 00 00</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="sendBtnLayout">
+           <item>
+            <widget class="QComboBox" name="comboCrsfType">
+             <property name="minimumSize">
+              <size>
+               <width>120</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="spinRepeatCount">
+             <property name="prefix">
+              <string>重复: </string>
+             </property>
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>9999</number>
+             </property>
+             <property name="value">
+              <number>1</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="spinRepeatInterval">
+             <property name="prefix">
+              <string>间隔: </string>
+             </property>
+             <property name="suffix">
+              <string> ms</string>
+             </property>
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>60000</number>
+             </property>
+             <property name="value">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnSend">
+             <property name="minimumSize">
+              <size>
+               <width>80</width>
+               <height>36</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>发送</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="templateLayout">
+           <item>
+            <widget class="QPushButton" name="btnTplRcChannels">
+             <property name="text">
+              <string>RC通道</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnTplLinkStats">
+             <property name="text">
+              <string>链路统计</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnTplHeartbeat">
+             <property name="text">
+              <string>心跳包</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnTplCustom">
+             <property name="text">
+              <string>自定义Hex</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupRecv">
+        <property name="title">
+         <string>接收数据 (带时间戳)</string>
+        </property>
+        <layout class="QVBoxLayout" name="recvLayout">
+         <item>
+          <widget class="QTextEdit" name="textRecv">
+           <property name="font">
+            <font>
+             <family>Courier New</family>
+             <pointsize>10</pointsize>
+            </font>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="recvCtrlLayout">
+           <item>
+            <widget class="QCheckBox" name="checkAutoScroll">
+             <property name="text">
+              <string>自动滚动</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="checkShowTimestamp">
+             <property name="text">
+              <string>显示时间戳</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QCheckBox" name="checkHexOnly">
+             <property name="text">
+              <string>纯Hex</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <spacer name="spRecv">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnClearRecvData">
+             <property name="text">
+              <string>清空接收</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnSaveRecv">
+             <property name="text">
+              <string>保存数据</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="btnDiagWindow">
+             <property name="text">
+              <string>诊断窗口</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+        </layout>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupLatency">
+     <property name="title">
+      <string>往返延迟统计</string>
+     </property>
+     <layout class="QHBoxLayout" name="latencyLayout">
+      <item>
+       <widget class="QLabel" name="lbLastLatency">
+        <property name="text">
+         <string>最后延迟: --</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight:bold;font-size:11pt;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbAvgLatency">
+        <property name="text">
+         <string>平均延迟: --</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size:10pt;color:#555;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbMinLatency">
+        <property name="text">
+         <string>最小: --</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbMaxLatency">
+        <property name="text">
+         <string>最大: --</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbPktCount">
+        <property name="text">
+         <string>已收包: 0</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnResetStats">
+        <property name="text">
+         <string>重置统计</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QSpinBox" name="spinStopAt">
+        <property name="minimumSize">
+         <size>
+          <width>100</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="prefix">
+         <string>帧数 </string>
+        </property>
+        <property name="suffix">
+         <string></string>
+        </property>
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>999999</number>
+        </property>
+        <property name="value">
+         <number>100</number>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnStopAtEnable">
+        <property name="text">
+         <string>开启</string>
+        </property>
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>90</width>
+          <height>0</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="groupDist">
+     <property name="title">
+      <string>延迟分布统计</string>
+     </property>
+     <layout class="QVBoxLayout" name="distLayout">
+      <item>
+       <widget class="QTextEdit" name="textDist">
+        <property name="font">
+         <font>
+          <family>Courier New</family>
+          <pointsize>9</pointsize>
+         </font>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

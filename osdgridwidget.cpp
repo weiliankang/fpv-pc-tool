@@ -57,6 +57,8 @@ OsdGridWidget::OsdGridWidget(QWidget *parent)
 
     setMouseTracking(true);
     setMinimumSize(FCOSD_MAX_WIDTH * m_cellW, FCOSD_MAX_HEIGHT * m_cellH);
+    // 允许随布局等比例缩放铺满（QLabel 网格在缩放模式下会被隐藏，改由 QPainter 统一绘制）
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
 void OsdGridWidget::setCharacterMap(const unsigned short map[FCOSD_MAX_HEIGHT][FCOSD_MAX_WIDTH])
@@ -190,8 +192,14 @@ bool OsdGridWidget::loadCharImages(const QString &dirPath, int numChars)
         }
     }
 
-    setMinimumSize(FCOSD_MAX_WIDTH * m_cellW, FCOSD_MAX_HEIGHT * m_cellH);
-    setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    if (m_scaleToFit) {
+        // 缩放铺满：不锁死最小尺寸，允许自由伸缩
+        setMinimumSize(0, 0);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    } else {
+        setMinimumSize(FCOSD_MAX_WIDTH * m_cellW, FCOSD_MAX_HEIGHT * m_cellH);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
     updateGeometry();
     memset(m_oldCharMap, 0xFF, sizeof(m_oldCharMap));
     updateOSDGrid();
@@ -208,7 +216,8 @@ bool OsdGridWidget::loadFontByIndex(int fontIdx, bool use1080)
     QString imgDir = use1080 ? SDK_IMAGES_1080 : SDK_IMAGES_720;
     QString imgPath = imgDir + "/" + FONT_NAMES_720[fontIdx]; // 文件名相同，尺寸不同
     int fontW = use1080 ? 36 : 24;
-    int fontH = fontW;
+    // SDK 字体实际字符高度: 720p=36, 1080p=54 (sysenv.cpp default_osdfont)
+    int fontH = use1080 ? 54 : 36;
 
     return loadFontImage(imgPath, fontW, fontH);
 }
@@ -243,8 +252,20 @@ QStringList OsdGridWidget::availableFonts()
 void OsdGridWidget::paintEvent(QPaintEvent * /*event*/)
 {
     QPainter p(this);
-    // 深色背景（模拟 OSD 屏幕底色）
-    p.fillRect(rect(), QColor(0x0A, 0x0A, 0x0A));
+    // 外边距背景（纯黑）——保证黑框 53:20 等比居中，四周留黑边不被拉伸
+    p.fillRect(rect(), QColor(0x00, 0x00, 0x00));
+
+    // ---- 缩放铺满模式：黑框保持 53:20 纵横比，等比例填满可用空间 ----
+    // 此模式下隐藏 QLabel 网格，统一用 QPainter 等比例缩放绘制字符位图，
+    // 数据流(m_charMap/updateOSDGrid)不变，只改渲染路径。
+    if (m_scaleToFit) {
+        // 隐藏 QLabel 网格（避免它们以固定尺寸叠加在缩放绘制之上）
+        for (int y = 0; y < FCOSD_MAX_HEIGHT; y++)
+            for (int x = 0; x < FCOSD_MAX_WIDTH; x++)
+                m_pCharLabel[y][x]->hide();
+        paintScaled(p);
+        return;
+    }
 
     if (!m_hasFont) {
         // ============ 无字体时的回退模式：QPainter 文字渲染 ============
@@ -332,6 +353,157 @@ void OsdGridWidget::updateOSDGrid()
             }
         }
     }
+    // 缩放铺满模式下 QLabel 被隐藏，需显式触发 QPainter 重绘（否则要切界面才刷新）
+    if (m_scaleToFit) update();
+}
+
+void OsdGridWidget::setScaleToFit(bool on)
+{
+    if (m_scaleToFit == on) return;
+    m_scaleToFit = on;
+    if (on) {
+        setMinimumSize(0, 0);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    } else {
+        setMinimumSize(FCOSD_MAX_WIDTH * m_cellW, FCOSD_MAX_HEIGHT * m_cellH);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+    updateGeometry();
+    update();
+}
+
+void OsdGridWidget::setAttitudeBarEnabled(bool on)
+{
+    m_attitudeBarEnabled = on;
+    update();
+}
+
+void OsdGridWidget::setAttitudeBar(const int left[4], const int right[4])
+{
+    for (int i = 0; i < 4; i++) m_attLeft[i]  = left[i];
+    for (int i = 0; i < 4; i++) m_attRight[i] = right[i];
+    update();
+}
+
+void OsdGridWidget::clearAttitudeBar()
+{
+    for (int i = 0; i < 4; i++) { m_attLeft[i] = -5; m_attRight[i] = -5; }
+    update();
+}
+
+// ============================================================
+// 缩放铺满绘制：黑框保持 53:20 纵横比，等比例填满可用空间。
+// 无论有无字体，都统一用 QPainter 绘制：
+//   - 有字体：把 m_bmpChar[索引] 位图缩放到当前格子大小
+//   - 无字体：回退绘制文字字符
+// 数据流(m_charMap)不变，只改渲染路径。始终保留深色黑底。
+// ============================================================
+void OsdGridWidget::paintScaled(QPainter &p)
+{
+    const int availW = width();
+    const int availH = height();
+
+    // 网格逻辑尺寸（基于单元格像素）
+    const double gridW = (double)FCOSD_MAX_WIDTH * m_cellW;
+    const double gridH = (double)FCOSD_MAX_HEIGHT * m_cellH;
+
+    // 等比例缩放：取宽高比更紧的那个，锁 53:20 纵横比
+    double scale = qMin(availW / gridW, availH / gridH);
+    if (scale <= 0) scale = 1.0;
+
+    // 实际绘制区域（居中，保持 53:20 纵横比）
+    int drawW = qRound(gridW * scale);
+    int drawH = qRound(gridH * scale);
+    int offX = (availW - drawW) / 2;
+    int offY = (availH - drawH) / 2;
+
+    // OSD 屏幕区底色（黑框内部）——区别于外边距纯黑
+    p.fillRect(offX, offY, drawW, drawH, QColor(0x0A, 0x0A, 0x0A));
+
+    // 统一的单元格缩放尺寸
+    const int cellW = qMax(1, qRound(m_cellW * scale));
+    const int cellH = qMax(1, qRound(m_cellH * scale));
+
+    // 有字体：逐格缩放绘制位图
+    if (m_hasFont && m_numChars > 0) {
+        for (int row = 0; row < FCOSD_MAX_HEIGHT; ++row) {
+            for (int col = 0; col < FCOSD_MAX_WIDTH; ++col) {
+                unsigned short c = m_charMap[row][col];
+                // 与 updateOSDGrid 完全一致的索引边界处理
+                if (c >= m_numChars)
+                    c = m_numChars > 0 ? m_numChars - 1 : 0;
+                if (c == 0 || c >= OSD_MAX_CHARS) continue;
+                const QPixmap &bmp = m_bmpChar[c];
+                if (bmp.isNull()) continue;
+                int x = offX + col * cellW;
+                int y = offY + row * cellH;
+                p.drawPixmap(QRect(x, y, cellW, cellH), bmp, bmp.rect());
+            }
+        }
+    } else {
+    QFont font("Consolas", -1, QFont::Normal);
+    font.setStyleHint(QFont::Monospace);
+    font.setFixedPitch(true);
+    font.setPixelSize(qMax(6, qRound(14 * scale)));
+    p.setFont(font);
+    QFontMetrics fm(font);
+    int textCharW = fm.horizontalAdvance('W');
+    int textCharH = fm.height();
+
+    for (int row = 0; row < FCOSD_MAX_HEIGHT; ++row) {
+        for (int col = 0; col < FCOSD_MAX_WIDTH; ++col) {
+            unsigned short val = m_charMap[row][col];
+            if (val == 0) continue;
+            int x = offX + col * cellW;
+            int y = offY + row * cellH;
+            int cx = x + (cellW - textCharW) / 2;
+            int cy = y + (cellH + textCharH) / 2 - fm.descent();
+            unsigned short lo = val & 0xFF;
+            if (lo >= 0x20 && lo <= 0x7E) {
+                if (lo >= '0' && lo <= '9') p.setPen(QColor(0x00, 0xFF, 0x88));
+                else if (lo >= 'A' && lo <= 'Z') p.setPen(QColor(0xFF, 0xFF, 0xFF));
+                else if (lo >= 'a' && lo <= 'z') p.setPen(QColor(0xAA, 0xCC, 0xFF));
+                else p.setPen(QColor(0xCC, 0xCC, 0xCC));
+                p.drawText(cx, cy, QChar(lo));
+            } else if (lo > 0x7E) {
+                p.setPen(QColor(0x88, 0xFF, 0x88));
+                p.drawText(cx, cy, QString("0x%1").arg(lo, 2, 16, QChar('0')));
+            } else {
+                p.setPen(QColor(0x88, 0x88, 0x88));
+                p.drawText(cx, cy, QChar(lo));
+            }
+        }
+    }
+    } // end else (无字体回退)
+
+    // ---- 姿态条图形化叠加层（F0 读取页 R10 姿态区可视化）----
+    if (m_attitudeBarEnabled) {
+        const int row = 10; // R10 姿态行
+        int baseY = offY + row * cellH + cellH / 2;
+        const int leftStartX  = offX + 21 * cellW + cellW / 2;
+        const int rightStartX = offX + 28 * cellW + cellW / 2;
+
+        p.setPen(QPen(QColor(0xFF, 0xD7, 0x00), qMax(1, qRound(2 * scale))));
+        for (int i = 0; i < 4; i++) {
+            if (m_attLeft[i] < -4 || m_attLeft[i] > 4) continue;
+            int x = leftStartX + i * cellW;
+            int y = baseY - m_attLeft[i] * (cellH / 5);
+            p.drawLine(x - cellW / 4, y, x + cellW / 4, y);
+        }
+        for (int i = 0; i < 4; i++) {
+            if (m_attRight[i] < -4 || m_attRight[i] > 4) continue;
+            int x = rightStartX + i * cellW;
+            int y = baseY - m_attRight[i] * (cellH / 5);
+            p.drawLine(x - cellW / 4, y, x + cellW / 4, y);
+        }
+        p.setPen(QPen(QColor(0x44, 0x88, 0xFF), 1, Qt::DotLine));
+        p.drawLine(leftStartX - cellW / 2, baseY, rightStartX + 4 * cellW - cellW / 2, baseY);
+    }
+
+    // 黑框边框——体现 53:20 等比边界（随缩放，始终保持比例）
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(0x28, 0x28, 0x28), qMax(1, qRound(2 * scale))));
+    p.drawRect(offX, offY, drawW, drawH);
 }
 
 void OsdGridWidget::mouseMoveEvent(QMouseEvent *event)

@@ -20,6 +20,15 @@ typedef enum {
     WIRELESS_DATA_TYPE_GET_STATUS_SKY = 0x55,
     WIRELESS_DATA_TYPE_GET_DISTANCE   = 0x56,
     WIRELESS_DATA_TYPE_GET_OSD_DATA   = 0x57,
+    // 中继(Relay)命令
+    WIRELESS_DATA_TYPE_SET_RELAY_CHANNEL_HOP     = 0xA0,
+    WIRELESS_DATA_TYPE_GET_RELAY_CHANNEL_HOP     = 0xA1,
+    WIRELESS_DATA_TYPE_GET_RELAY_STATUS          = 0xA2,
+    WIRELESS_DATA_TYPE_GET_RELAY_BB_PWR          = 0xA3,
+    WIRELESS_DATA_TYPE_SET_RELAY_BB_PWR          = 0xA4,
+    WIRELESS_DATA_TYPE_GET_RELAY_GND_DISTANCE    = 0xA5,
+    WIRELESS_DATA_TYPE_GET_RELAY_SKY_DISTANCE    = 0xA6,
+    WIRELESS_DATA_TYPE_GET_RELAY_OSD_DATA        = 0xA7,
 } wireless_data_type_t;
 
 class SerialProtocolHandler : public QObject
@@ -54,6 +63,16 @@ public:
     static constexpr quint8 CMD_GET_STATUS_SKY   = 0x55;
     static constexpr quint8 CMD_GET_DISTANCE     = 0x56;
     static constexpr quint8 CMD_GET_OSD_DATA     = 0x57;
+
+    // 中继(Relay)命令
+    static constexpr quint8 CMD_SET_RELAY_CHANNEL_HOP  = 0xA0;
+    static constexpr quint8 CMD_GET_RELAY_CHANNEL_HOP  = 0xA1;
+    static constexpr quint8 CMD_GET_RELAY_STATUS       = 0xA2;
+    static constexpr quint8 CMD_GET_RELAY_BB_PWR       = 0xA3;
+    static constexpr quint8 CMD_SET_RELAY_BB_PWR       = 0xA4;
+    static constexpr quint8 CMD_GET_RELAY_GND_DISTANCE = 0xA5;
+    static constexpr quint8 CMD_GET_RELAY_SKY_DISTANCE = 0xA6;
+    static constexpr quint8 CMD_GET_RELAY_OSD_DATA     = 0xA7;
 
     // 创建无线命令
     static QByteArray createWirelessCommand(quint8 cmdType, const QByteArray &values);

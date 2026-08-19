@@ -1,5 +1,8 @@
 ﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QTimer>
+#include <QScrollArea>
+#include <QFrame>
 #include "ui_page_firmware.h"
 #include "ui_page_serial_connection.h"
 #include "ui_page_serial_keycontrol.h"
@@ -20,6 +23,7 @@
 #include "translator.h"
 
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QFile>
 #include <QDir>
@@ -36,13 +40,34 @@
 #include <QVBoxLayout>
 #include <QSettings>
 #include <QDebug>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QGroupBox>
+#include <QPushButton>
+#include <QLineEdit>
+#include <QPlainTextEdit>
 
 // 调试宏：所有槽函数入口打印
 #define TRACE qDebug() << "[TRACE]" << Q_FUNC_INFO
 
+// 基带功率索引 -> 功率显示文本映射表
+    static const char* bbPwrNames[32] = {
+        "25", "100", "150", "200",
+        "300", "350", "500", "700",
+        "1000", "1500", "2500", "3000",
+        "4000", "1000 AUTO", "2000 AUTO", "4000 AUTO",
+        "100 AUTO", "500 AUTO", "5000", "5000 AUTO",
+        "?", "?", "?", "?",
+        "?", "?", "?", "?",
+        "?", "?", "?", "?",
+    };
+
 // =====================================================================
 // 构造函数 / 析构函数
 // =====================================================================
+static QString detectWindeployqt();   // 自动探测 windeployqt.exe 位置
 MainWindow::MainWindow(QWidget *parent)
  : QMainWindow(parent), ui(new Ui::MainWindow),
    uiFirmware(nullptr), uiConn(nullptr), uiKey(nullptr),
@@ -66,6 +91,17 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(m_comm, &SerialCommunicator::statusChanged, this, &MainWindow::onSerialStatusChanged);
     connect(m_comm, &SerialCommunicator::dataReceived, this, &MainWindow::onDataReceived);
+
+    // 恢复上次窗口大小/位置（支持自定义缩放并记忆）
+    QSettings winSettings(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QByteArray geom = winSettings.value(QStringLiteral("window/geometry")).toByteArray();
+    if (!geom.isEmpty()) {
+        restoreGeometry(geom);
+    } else {
+        resize(1300, 800);
+    }
+    // 允许自由缩放（下限 800x500，防止缩到过小而重叠/错乱）
+    setMinimumSize(800, 500);
 }
 
 MainWindow::~MainWindow() {
@@ -87,6 +123,9 @@ MainWindow::~MainWindow() {
 
 void MainWindow::closeEvent(QCloseEvent *event) {
     TRACE;
+    // 保存窗口大小/位置，下次启动恢复（自定义缩放记忆）
+    QSettings winSettings(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    winSettings.setValue(QStringLiteral("window/geometry"), saveGeometry());
     if (m_comm->isConnected()) m_comm->disconnect();
     event->accept();
 }
@@ -110,8 +149,9 @@ void MainWindow::initUI() {
     ui->setupUi(this);
     setFont(QFont("Microsoft YaHei", 9));
 
-    loadFirmwarePage();
     loadSerialPages();
+    loadFirmwarePage();
+    buildPackagePage();
     loadSettingsPage();
 
     connect(uiSettings->comboLang, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -140,6 +180,19 @@ void MainWindow::loadFirmwarePage() {
     ui->stackContent->addWidget(m_pageFirmware);
 }
 
+// 把页面内容包进可滚动区域（QScrollArea）：
+// 窗口足够大时内容拉伸填满（平滑缩放）；窗口缩小到小于内容时出现滚动条，
+// 内容滚动而不重叠。允许窗口任意缩放，不锁死。
+QScrollArea *MainWindow::makeScrollable(QWidget *page) {
+    QScrollArea *sa = new QScrollArea;
+    sa->setWidgetResizable(true);
+    sa->setFrameShape(QFrame::NoFrame);
+    sa->setWidget(page);
+    // 允许滚动区随窗口收缩（不把内容最小尺寸强加给窗口）
+    sa->setMinimumSize(0, 0);
+    return sa;
+}
+
 void MainWindow::loadSettingsPage() {
     TRACE;
     m_pageSettings = new QWidget();
@@ -147,6 +200,107 @@ void MainWindow::loadSettingsPage() {
     uiSettings->setupUi(m_pageSettings);
     uiSettings->comboLang->setCurrentIndex(0);
     ui->stackContent->addWidget(m_pageSettings);
+}
+
+// =====================================================================
+// 打包工具页
+// =====================================================================
+void MainWindow::buildPackagePage() {
+    TRACE;
+    m_pagePackage = new QWidget();
+    QVBoxLayout *outer = new QVBoxLayout(m_pagePackage);
+    outer->setContentsMargins(12, 12, 12, 12);
+    outer->setSpacing(10);
+
+    // ---- 打包设置组 ----
+    QGroupBox *grp = new QGroupBox(QStringLiteral("打包设置"));
+    QGridLayout *grid = new QGridLayout(grp);
+    grid->setColumnStretch(1, 1);
+
+    // exe 行
+    grid->addWidget(new QLabel(QStringLiteral("目标 exe:")), 0, 0);
+    m_pkgExeEdit = new QLineEdit;
+    m_pkgExeEdit->setPlaceholderText(QStringLiteral("选择要打包的 .exe 文件"));
+    QPushButton *btnExe = new QPushButton(QStringLiteral("浏览..."));
+    connect(btnExe, &QPushButton::clicked, this, &MainWindow::onPkgBrowseExe);
+    grid->addWidget(m_pkgExeEdit, 0, 1);
+    grid->addWidget(btnExe, 0, 2);
+
+    // 输出目录行
+    grid->addWidget(new QLabel(QStringLiteral("输出目录:")), 1, 0);
+    m_pkgDirEdit = new QLineEdit;
+    m_pkgDirEdit->setPlaceholderText(QStringLiteral("打包产物存放目录"));
+    QPushButton *btnDir = new QPushButton(QStringLiteral("浏览..."));
+    connect(btnDir, &QPushButton::clicked, this, &MainWindow::onPkgBrowseDir);
+    grid->addWidget(m_pkgDirEdit, 1, 1);
+    grid->addWidget(btnDir, 1, 2);
+
+    // windeployqt 路径行
+    grid->addWidget(new QLabel(QStringLiteral("windeployqt:")), 2, 0);
+    m_pkgWindeployqtEdit = new QLineEdit;
+    m_pkgWindeployqtEdit->setPlaceholderText(QStringLiteral("windeployqt.exe 路径（留空自动探测）"));
+    QPushButton *btnWd = new QPushButton(QStringLiteral("浏览..."));
+    connect(btnWd, &QPushButton::clicked, this, &MainWindow::onPkgBrowseWindeployqt);
+    grid->addWidget(m_pkgWindeployqtEdit, 2, 1);
+    grid->addWidget(btnWd, 2, 2);
+
+    outer->addWidget(grp);
+
+    // ---- 操作按钮行 ----
+    QHBoxLayout *btnRow = new QHBoxLayout;
+    m_pkgRunBtn = new QPushButton(QStringLiteral("开始打包"));
+    m_pkgRunBtn->setMinimumHeight(32);
+    connect(m_pkgRunBtn, &QPushButton::clicked, this, &MainWindow::onPkgRun);
+    btnRow->addWidget(m_pkgRunBtn);
+
+    m_pkgOpenBtn = new QPushButton(QStringLiteral("打开文件夹"));
+    m_pkgOpenBtn->setMinimumHeight(32);
+    m_pkgOpenBtn->setVisible(false);   // 打包成功后才显示
+    connect(m_pkgOpenBtn, &QPushButton::clicked, this, &MainWindow::onPkgOpenFolder);
+    btnRow->addWidget(m_pkgOpenBtn);
+
+    btnRow->addStretch(1);
+    outer->addLayout(btnRow);
+
+    // ---- 日志 ----
+    m_pkgLog = new QPlainTextEdit;
+    m_pkgLog->setReadOnly(true);
+    outer->addWidget(m_pkgLog, 1);
+
+    // 恢复历史路径（QSettings 记忆）
+    QSettings s(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString lastExe = s.value(QStringLiteral("package/exe")).toString();
+    QString lastDir = s.value(QStringLiteral("package/dir")).toString();
+    QString lastWd  = s.value(QStringLiteral("package/windeployqt")).toString();
+    if (!lastExe.isEmpty()) m_pkgExeEdit->setText(lastExe);
+    if (!lastDir.isEmpty()) m_pkgDirEdit->setText(lastDir);
+    if (!lastWd.isEmpty())  m_pkgWindeployqtEdit->setText(lastWd);
+    else {
+        // 自动探测 windeployqt：exe 同级 → 常见 Qt bin 目录
+        QString probed = detectWindeployqt();
+        if (!probed.isEmpty()) m_pkgWindeployqtEdit->setText(probed);
+    }
+
+    ui->stackContent->addWidget(m_pagePackage);
+}
+
+// 自动探测 windeployqt.exe 的位置
+static QString detectWindeployqt() {
+    QStringList candidates;
+    // 常见 Qt bin 目录
+    candidates << QStringLiteral("E:/Qt/5.15.2/mingw81_32/bin/windeployqt.exe")
+               << QStringLiteral("C:/Qt/5.15.2/mingw81_32/bin/windeployqt.exe");
+    // 从 PATH 查找
+    QString pathEnv = qEnvironmentVariable("PATH");
+    const QStringList dirs = pathEnv.split(';', Qt::SkipEmptyParts);
+    for (const QString &d : dirs) {
+        QFileInfo fi(d + QLatin1String("/windeployqt.exe"));
+        if (fi.isFile()) candidates << fi.absoluteFilePath();
+    }
+    for (const QString &c : candidates) {
+        if (QFileInfo::exists(c)) return c;
+    }
+    return QString();
 }
 
 void MainWindow::loadSerialPages() {
@@ -199,11 +353,21 @@ void MainWindow::loadSerialPages() {
     connect(uiWireless->btnGetStatusSky, &QPushButton::clicked, this, &MainWindow::onGetStatusSky);
     connect(uiWireless->btnGetDistance, &QPushButton::clicked, this, &MainWindow::onGetDistance);
     connect(uiWireless->comboBand, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onUpdateFreqPreview);
+            this, &MainWindow::onUpdatePreviewFromParams);
     connect(uiWireless->spinChannel, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, &MainWindow::onUpdateFreqPreview);
+            this, &MainWindow::onUpdatePreviewFromParams);
     connect(uiWireless->comboHop, QOverload<int>::of(&QComboBox::currentIndexChanged),
-            this, &MainWindow::onUpdateFreqPreview);
+            this, &MainWindow::onUpdatePreviewFromParams);
+    connect(uiWireless->comboBbPwr, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onUpdatePreviewFromParams);
+    connect(uiWireless->comboRelayBand, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onUpdatePreviewFromParams);
+    connect(uiWireless->spinRelayChannel, QOverload<int>::of(&QSpinBox::valueChanged),
+            this, &MainWindow::onUpdatePreviewFromParams);
+    connect(uiWireless->comboRelayHop, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onUpdatePreviewFromParams);
+    connect(uiWireless->comboRelayBbPwr, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onUpdatePreviewFromParams);
 
     // ---- 中继(Relay)无线参数按钮 ----
     connect(uiWireless->btnSetRelayFreq, &QPushButton::clicked, this, &MainWindow::onSetRelayFreq);
@@ -213,7 +377,8 @@ void MainWindow::loadSerialPages() {
     connect(uiWireless->btnSetRelayBbPwr, &QPushButton::clicked, this, &MainWindow::onSetRelayBbPwr);
     connect(uiWireless->btnGetRelayGndDist, &QPushButton::clicked, this, &MainWindow::onGetRelayGndDist);
     connect(uiWireless->btnGetRelaySkyDist, &QPushButton::clicked, this, &MainWindow::onGetRelaySkyDist);
-    connect(uiWireless->btnGetRelayOsd, &QPushButton::clicked, this, &MainWindow::onGetRelayOsd);
+    connect(uiWireless->btnGetOsdDataWireless, &QPushButton::clicked, this, &MainWindow::onGetOsdDataWireless);
+    connect(uiWireless->btnClearOsdDataWireless, &QPushButton::clicked, this, &MainWindow::onClearOsdDataWireless);
 
     connect(uiCustom->btnSendCustom, &QPushButton::clicked, this, &MainWindow::onSendCustom);
     connect(uiCustom->btnCheckFormat, &QPushButton::clicked, this, &MainWindow::onCheckFormat);
@@ -266,22 +431,22 @@ void MainWindow::loadSerialPages() {
     // 策略1: Qt 资源文件（编译时嵌入，最可靠）
     if (QFile::exists(":/osdchars/0.png")) {
         qDebug() << "[OSD] 从 Qt 资源加载 osdChars";
-        fontLoaded = m_osdGrid->loadCharImages(":/osdchars", 256);
+        fontLoaded = m_osdGrid->loadCharImages(":/osdchars", 512);
     }
-    // 策略2: 源码目录下的 osdChars（开发模式）
+    // 策略2: 源码目录下的 osdChars_new（开发模式）
     if (!fontLoaded) {
-        QString fontDir = QFileInfo(__FILE__).absolutePath() + "/osdChars";
+        QString fontDir = QFileInfo(__FILE__).absolutePath() + "/osdChars_new";
         if (QDir(fontDir).exists()) {
             qDebug() << "[OSD] 从源码目录加载:" << fontDir;
-            fontLoaded = m_osdGrid->loadCharImages(fontDir, 256);
+            fontLoaded = m_osdGrid->loadCharImages(fontDir, 512);
         }
     }
     // 策略3: exe 同级目录（发布模式）
     if (!fontLoaded) {
-        QString fontDir = QCoreApplication::applicationDirPath() + "/osdChars";
+        QString fontDir = QCoreApplication::applicationDirPath() + "/osdChars_new";
         if (QDir(fontDir).exists()) {
             qDebug() << "[OSD] 从 exe 目录加载:" << fontDir;
-            fontLoaded = m_osdGrid->loadCharImages(fontDir, 256);
+            fontLoaded = m_osdGrid->loadCharImages(fontDir, 512);
         }
     }
     if (!fontLoaded) {
@@ -311,35 +476,128 @@ void MainWindow::loadSerialPages() {
     connect(m_osdPollTimer, &QTimer::timeout, this, &MainWindow::onPollTimer);
 
     // 标签页标题稍后在 retranslateUi 中设置
-    m_serialTabs->addTab(m_pageConn, QString());
-    m_serialTabs->addTab(m_pageKey, QString());
-    m_serialTabs->addTab(m_pageWireless, QString());
-    m_serialTabs->addTab(m_pageOsd, QString());
-    m_serialTabs->addTab(m_pageCustom, QString());
-    m_serialTabs->addTab(m_pageHistory, QString());
+    m_serialTabs->addTab(makeScrollable(m_pageConn), QString());
+    m_serialTabs->addTab(makeScrollable(m_pageKey), QString());
+    m_serialTabs->addTab(makeScrollable(m_pageWireless), QString());
+    m_serialTabs->addTab(makeScrollable(m_pageOsd), QString());
+
+    // ---- F0 读取测试页面（快捷指令），放在 OSD 显示后面 ----
+    m_f0readPage = new F0ReadPage(m_comm, this);
+    m_serialTabs->addTab(makeScrollable(m_f0readPage), QString());
+
+    // 快捷指令(F0)数据 → 无线参数页同步：
+    //  - 发送 F0 时清空无线历史缓冲，避免快捷指令的历史响应堆积污染无线打印栏
+    //  - 收到频点(0x51)/功率(0x53)响应时更新无线参数页的频率/功率设置
+    connect(m_f0readPage, &F0ReadPage::f0CommandSent, this, [this]() {
+        m_wirelessSuppress = true;      // 快捷指令接收期间，不打印响应到无线 textStatus
+        m_wirelessBuf.clear();
+        // 保底：2 秒后自动解除抑制，避免一直屏蔽无线打印
+        QTimer::singleShot(2000, this, [this]() { m_wirelessSuppress = false; });
+    });
+    connect(m_f0readPage, &F0ReadPage::freqUpdated, this, [this](int band, int channel, int hop) {
+        uiWireless->comboBand->setCurrentIndex(band);
+        uiWireless->spinChannel->setValue(channel + 1);
+        uiWireless->comboHop->setCurrentIndex(hop);
+    });
+    connect(m_f0readPage, &F0ReadPage::powerUpdated, this, [this](int pwrIdx, quint32 bitmap) {
+        QComboBox *combo = uiWireless->comboBbPwr;
+        combo->blockSignals(true);
+        combo->clear();
+        for (int i = 0; i < 20; ++i)
+            if (bitmap & (1U << i))
+                combo->addItem(QString::fromUtf8(bbPwrNames[i]), i);
+        combo->blockSignals(false);
+        int curIdx = combo->findData(pwrIdx);
+        if (curIdx >= 0) combo->setCurrentIndex(curIdx);
+    });
+
+    m_serialTabs->addTab(makeScrollable(m_pageCustom), QString());
 
     // ---- CRSF 测试页面 ----
     m_crsfPage = new CrsfTestPage(m_comm, this);
     // 将 CRSF 测试页作为独立的 widget 加入 stacked widget（串口标签页之后）
-    m_serialTabs->addTab(m_crsfPage, QString());
+    m_serialTabs->addTab(makeScrollable(m_crsfPage), QString());
 
     // ---- SBUS 测试页面 ----
     m_sbusPage = new SbusTestPage(m_comm, this);
-    m_serialTabs->addTab(m_sbusPage, QString());
+    m_serialTabs->addTab(makeScrollable(m_sbusPage), QString());
 
     // ---- MAVLink 测试页面 ----
     m_mavlinkPage = new MavlinkTestPage(m_comm, this);
-    m_serialTabs->addTab(m_mavlinkPage, QString());
+    m_serialTabs->addTab(makeScrollable(m_mavlinkPage), QString());
 
-    // ---- F0 读取测试页面 ----
-    m_f0readPage = new F0ReadPage(m_comm, this);
-    m_serialTabs->addTab(m_f0readPage, QString());
+    // ---- 历史记录，放在最右侧 ----
+    m_serialTabs->addTab(makeScrollable(m_pageHistory), QString());
 
     ui->stackContent->addWidget(m_serialTabs);
 
     onRefreshPorts();
     onUpdateKeyPreview();
-    onUpdateFreqPreview();
+    onUpdatePreviewFromParams();
+
+    // ===== 全局样式 (商业软件风格) =====
+    setStyleSheet(QStringLiteral(R"(
+        QMainWindow, QDialog, QWidget#centralwidget {
+            background: #f5f6f8;
+            color: #2b2b2b;
+        }
+        QGroupBox {
+            background: #ffffff;
+            border: 1px solid #d8dce2;
+            border-radius: 6px;
+            margin-top: 10px;
+            padding-top: 4px;
+            font-weight: 600;
+            color: #333;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            left: 10px;
+            padding: 0 4px;
+            background: #ffffff;
+            color: #1f6feb;
+            font-size: 13px;
+        }
+        QPushButton {
+            background: #fafbfc;
+            border: 1px solid #c9ced6;
+            border-radius: 4px;
+            padding: 4px 10px;
+            color: #24292f;
+        }
+        QPushButton:hover { background: #f0f4f8; border-color: #1f6feb; }
+        QPushButton:pressed { background: #e3e9f0; }
+        QPushButton:focus { border-color: #1f6feb; }
+        QLineEdit, QComboBox, QSpinBox, QPlainTextEdit, QTextEdit {
+            background: #ffffff;
+            border: 1px solid #c9ced6;
+            border-radius: 4px;
+            padding: 3px 6px;
+            color: #24292f;
+            selection-background-color: #cfe3ff;
+        }
+        QLineEdit:focus, QComboBox:focus, QSpinBox:focus { border-color: #1f6feb; }
+
+        QLabel { color: #3a3f47; }
+        QTabWidget::pane {
+            border: 1px solid #d8dce2;
+            background: #f5f6f8;
+            border-radius: 4px;
+            top: -1px;
+        }
+        QTabBar::tab {
+            background: #e9ebef;
+            border: 1px solid #d8dce2;
+            padding: 6px 14px;
+            margin-right: 2px;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            color: #444;
+        }
+        QTabBar::tab:selected { background: #ffffff; color: #1f6feb; font-weight: 600; }
+        QTabBar::tab:hover:!selected { background: #f0f2f5; }
+        QStatusBar { background: #ffffff; border-top: 1px solid #d8dce2; color: #555; }
+    )"));
 }
 
 void MainWindow::setupKeyButtons() {
@@ -411,7 +669,7 @@ void MainWindow::retranslateUi() {
     // ====== 直接设置中文（绕过翻译系统验证） ======
     uiSettings->groupLanguage->setTitle(QStringLiteral("语言"));
     uiSettings->groupAbout->setTitle(QStringLiteral("关于"));
-    uiSettings->labelAboutVer->setText(QStringLiteral("版本: 1.0.0"));
+    uiSettings->labelAboutVer->setText(QStringLiteral("版本: 2.1.1"));
     uiSettings->labelAboutDesc->setText(QStringLiteral("FPV 调试工具，用于无线系统测试和固件分析"));
     uiSettings->labelLangNote->setText(QStringLiteral("切换语言后可能需要重启才能完全生效"));
     uiSettings->lbLang->setText(QStringLiteral("语言:"));
@@ -428,7 +686,7 @@ void MainWindow::retranslateUi() {
     uiKey->btnPair->setText(QStringLiteral("配对"));
     uiKey->btnUpdate->setText(QStringLiteral("升级按键"));
     uiKey->btnRecord->setText(QStringLiteral("录像键"));
-    uiKey->btnForce720p->setText(QStringLiteral("720p60强制"));
+    uiKey->btnForce720p->setText(QStringLiteral("强制720p60"));
     uiKey->btnDebug3->setText(QStringLiteral("debug3模式"));
     uiKey->lbKeyName->setText(QStringLiteral("按键:"));
     uiKey->lbPressType->setText(QStringLiteral("按压类型:"));
@@ -437,44 +695,56 @@ void MainWindow::retranslateUi() {
     uiKey->comboPressType->setItemText(0, QStringLiteral("单击 (0)"));
     uiKey->comboPressType->setItemText(1, QStringLiteral("长按 (1)"));
 
-    uiWireless->groupFreq->setTitle(QStringLiteral("频率设置"));
+    uiWireless->groupFreq->setTitle(QStringLiteral("频点设置"));
     uiWireless->groupStatus->setTitle(QStringLiteral("状态与参数"));
     uiWireless->lbBand->setText(QStringLiteral("频段:"));
-    uiWireless->lbChan->setText(QStringLiteral("频道:"));
+    uiWireless->lbChan->setText(QStringLiteral("通道:"));
     uiWireless->lbHop->setText(QStringLiteral("模式:"));
-    uiWireless->lbFreqPrev->setText(QStringLiteral("预览:"));
-    uiWireless->lbBbPwr->setText(QStringLiteral("基带功率索引:"));
-    uiWireless->btnSetFreq->setText(QStringLiteral("设置频点"));
-    uiWireless->btnGetFreq->setText(QStringLiteral("获取频点"));
-    uiWireless->btnGetStatus->setText(QStringLiteral("获取状态 (地面 0x52)"));
-    uiWireless->btnGetStatusSky->setText(QStringLiteral("获取状态 (天空 0x55)"));
+    uiWireless->lbBbPwr->setText(QStringLiteral("基带功率:"));
+    uiWireless->btnSetFreq->setText(QStringLiteral("设置频点 (0x50)"));
+    uiWireless->btnGetFreq->setText(QStringLiteral("获取频点 (0x51)"));
+    uiWireless->btnGetStatus->setText(QStringLiteral("获取地面状态 (0x52)"));
+    uiWireless->btnGetStatusSky->setText(QStringLiteral("获取天空状态 (0x55)"));
     uiWireless->btnGetDistance->setText(QStringLiteral("获取距离 (0x56)"));
     uiWireless->btnGetBbPwr->setText(QStringLiteral("获取基带功率 (0x53)"));
     uiWireless->btnSetBbPwr->setText(QStringLiteral("设置基带功率 (0x54)"));
     uiWireless->comboBand->setItemText(0, QStringLiteral("频段A (0)"));
     uiWireless->comboBand->setItemText(1, QStringLiteral("频段B (1)"));
     uiWireless->comboBand->setItemText(2, QStringLiteral("频段C (2)"));
+    uiWireless->comboBand->setItemText(3, QStringLiteral("频段D (3)"));
+    uiWireless->comboBand->setItemText(4, QStringLiteral("频段E (4)"));
     uiWireless->comboHop->setItemText(0, QStringLiteral("定频 (0)"));
     uiWireless->comboHop->setItemText(1, QStringLiteral("跳频 (1)"));
 
+    // 频道 UI 显示1开头, 实际下发从0开始 (显示值 = 实际值 + 1)
+    uiWireless->spinChannel->setRange(1, 40);
+    uiWireless->spinRelayChannel->setRange(1, 40);
+
     // 中继(Relay)翻译
     uiWireless->groupRelay->setTitle(QStringLiteral("中继 (Relay)"));
-    uiWireless->groupRelayFreq->setTitle(QStringLiteral("中继频点"));
     uiWireless->lbRelayBand->setText(QStringLiteral("频段:"));
-    uiWireless->lbRelayChan->setText(QStringLiteral("频道:"));
+    uiWireless->lbRelayChan->setText(QStringLiteral("通道:"));
     uiWireless->lbRelayHop->setText(QStringLiteral("模式:"));
-    uiWireless->lbRelayBbPwr->setText(QStringLiteral("中继基带功率索引:"));
+    uiWireless->lbRelayBbPwr->setText(QStringLiteral("基带功率:"));
     uiWireless->btnSetRelayFreq->setText(QStringLiteral("设置中继频点 (0xA0)"));
     uiWireless->btnGetRelayFreq->setText(QStringLiteral("获取中继频点 (0xA1)"));
     uiWireless->btnGetRelayStatus->setText(QStringLiteral("获取中继状态 (0xA2)"));
     uiWireless->btnGetRelayBbPwr->setText(QStringLiteral("获取中继功率 (0xA3)"));
     uiWireless->btnSetRelayBbPwr->setText(QStringLiteral("设置中继功率 (0xA4)"));
-    uiWireless->btnGetRelayGndDist->setText(QStringLiteral("中继-地面距离 (0xA5)"));
-    uiWireless->btnGetRelaySkyDist->setText(QStringLiteral("中继-天空距离 (0xA6)"));
-    uiWireless->btnGetRelayOsd->setText(QStringLiteral("获取中继OSD数据 (0xA7)"));
+    uiWireless->btnGetRelayGndDist->setText(QStringLiteral("获取地面距离 (0xA5)"));
+    uiWireless->btnGetRelaySkyDist->setText(QStringLiteral("获取天空距离 (0xA6)"));
+    uiWireless->groupOsdData->setTitle(QStringLiteral("OSD数据"));
+    uiWireless->btnGetOsdDataWireless->setText(QStringLiteral("获取OSD数据 (0x57)"));
+    uiWireless->btnClearOsdDataWireless->setText(QStringLiteral("清空"));
+    uiWireless->groupRelayData->setTitle(QStringLiteral("中继/无线数据打印"));
+    uiWireless->groupPreview->setTitle(QStringLiteral("命令预览"));
+    uiWireless->lbPreviewHint->setText(QStringLiteral("预览:"));
     uiWireless->comboRelayBand->setItemText(0, QStringLiteral("频段A (0)"));
     uiWireless->comboRelayBand->setItemText(1, QStringLiteral("频段B (1)"));
     uiWireless->comboRelayBand->setItemText(2, QStringLiteral("频段C (2)"));
+    uiWireless->comboRelayBand->setItemText(3, QStringLiteral("频段D (3)"));
+    uiWireless->comboRelayBand->setItemText(4, QStringLiteral("频段E (4)"));
+    uiWireless->comboRelayBand->setCurrentIndex(1); // 默认频段B
     uiWireless->comboRelayHop->setItemText(0, QStringLiteral("定频 (0)"));
     uiWireless->comboRelayHop->setItemText(1, QStringLiteral("跳频 (1)"));
 
@@ -527,18 +797,19 @@ void MainWindow::retranslateUi() {
     m_serialTabs->setTabText(1, QStringLiteral("按键控制"));
     m_serialTabs->setTabText(2, QStringLiteral("无线参数"));
     m_serialTabs->setTabText(3, QStringLiteral("OSD显示"));
-    m_serialTabs->setTabText(4, QStringLiteral("自定义命令"));
-    m_serialTabs->setTabText(5, QStringLiteral("历史记录"));
-    m_serialTabs->setTabText(6, QStringLiteral("CRSF测试"));
-    m_serialTabs->setTabText(7, QStringLiteral("SBUS测试"));
-    m_serialTabs->setTabText(8, QStringLiteral("MAVLink测试"));
-    m_serialTabs->setTabText(9, QStringLiteral("F0读取"));
+    m_serialTabs->setTabText(4, QStringLiteral("快捷指令"));
+    m_serialTabs->setTabText(5, QStringLiteral("自定义数据"));
+    m_serialTabs->setTabText(6, QStringLiteral("CRSF数据"));
+    m_serialTabs->setTabText(7, QStringLiteral("SBUS数据"));
+    m_serialTabs->setTabText(8, QStringLiteral("MAVLink数据"));
+    m_serialTabs->setTabText(9, QStringLiteral("历史记录"));
 
     // 侧边栏
     int sc = ui->listSidebar->count();
-    if (sc > 0) ui->listSidebar->item(0)->setText(QStringLiteral("固件解析"));
-    if (sc > 1) ui->listSidebar->item(1)->setText(QStringLiteral("串口工具"));
-    if (sc > 2) ui->listSidebar->item(2)->setText(QStringLiteral("设置"));
+    if (sc > 0) ui->listSidebar->item(0)->setText(QStringLiteral("串口工具"));
+    if (sc > 1) ui->listSidebar->item(1)->setText(QStringLiteral("固件解析"));
+    if (sc > 2) ui->listSidebar->item(2)->setText(QStringLiteral("打包工具"));
+    if (sc > 3) ui->listSidebar->item(3)->setText(QStringLiteral("设置"));
 }
 
 void MainWindow::setLanguage(const QString &langCode) {
@@ -556,6 +827,136 @@ void MainWindow::onSidebarChanged(int index) {
     ui->stackContent->setCurrentIndex(index);
 }
 
+// =====================================================================
+// 打包工具：槽函数
+// =====================================================================
+void MainWindow::onPkgBrowseExe() {
+    TRACE;
+    QSettings s(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString startDir = s.value(QStringLiteral("package/exeDir")).toString();
+    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择要打包的可执行文件"), startDir,
+                                                QStringLiteral("可执行文件 (*.exe);;所有文件 (*)"));
+    if (path.isEmpty()) return;
+    m_pkgExeEdit->setText(path);
+    s.setValue(QStringLiteral("package/exe"), path);
+    s.setValue(QStringLiteral("package/exeDir"), QFileInfo(path).absolutePath());
+}
+
+void MainWindow::onPkgBrowseDir() {
+    TRACE;
+    QSettings s(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString startDir = s.value(QStringLiteral("package/dir")).toString();
+    if (startDir.isEmpty()) startDir = s.value(QStringLiteral("package/exeDir")).toString();
+    QString dir = QFileDialog::getExistingDirectory(this, QStringLiteral("选择打包输出目录"), startDir);
+    if (dir.isEmpty()) return;
+    m_pkgDirEdit->setText(dir);
+    s.setValue(QStringLiteral("package/dir"), dir);
+}
+
+void MainWindow::onPkgBrowseWindeployqt() {
+    TRACE;
+    QSettings s(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString startDir = s.value(QStringLiteral("package/windeployqtDir")).toString();
+    if (startDir.isEmpty()) startDir = QStringLiteral("E:/Qt/5.15.2/mingw81_32/bin");
+    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择 windeployqt.exe"), startDir,
+                                                QStringLiteral("可执行文件 (*.exe);;所有文件 (*)"));
+    if (path.isEmpty()) return;
+    m_pkgWindeployqtEdit->setText(path);
+    s.setValue(QStringLiteral("package/windeployqt"), path);
+    s.setValue(QStringLiteral("package/windeployqtDir"), QFileInfo(path).absolutePath());
+}
+
+void MainWindow::onPkgRun() {
+    TRACE;
+    if (m_pkgProc && m_pkgProc->state() != QProcess::NotRunning) {
+        m_pkgLog->appendPlainText(QStringLiteral("[错误] 打包正在进行中，请等待完成。"));
+        return;
+    }
+
+    QString exe = m_pkgExeEdit->text().trimmed();
+    QString dir = m_pkgDirEdit->text().trimmed();
+    QString wd  = m_pkgWindeployqtEdit->text().trimmed();
+
+    if (exe.isEmpty() || !QFileInfo::exists(exe)) {
+        m_pkgLog->appendPlainText(QStringLiteral("[错误] 请先选择有效的目标 exe 文件。"));
+        return;
+    }
+    if (dir.isEmpty()) {
+        m_pkgLog->appendPlainText(QStringLiteral("[错误] 请先选择输出目录。"));
+        return;
+    }
+    if (wd.isEmpty()) wd = detectWindeployqt();
+    if (wd.isEmpty() || !QFileInfo::exists(wd)) {
+        m_pkgLog->appendPlainText(QStringLiteral("[错误] 未找到 windeployqt.exe，请手动选择其路径。"));
+        return;
+    }
+
+    // 确保输出目录存在
+    if (!QDir().mkpath(dir)) {
+        m_pkgLog->appendPlainText(QStringLiteral("[错误] 无法创建输出目录: ") + dir);
+        return;
+    }
+
+    // 若 exe 不在输出目录，先复制过去（windeployqt 需要 exe 在目标目录内打包依赖）
+    QString targetExe = dir + QLatin1Char('/') + QFileInfo(exe).fileName();
+    if (QFileInfo::exists(targetExe)) QFile::remove(targetExe);
+    if (QFileInfo(exe).canonicalFilePath() != QFileInfo(targetExe).canonicalFilePath()) {
+        if (!QFile::copy(exe, targetExe)) {
+            m_pkgLog->appendPlainText(QStringLiteral("[错误] 复制 exe 到输出目录失败: ") + targetExe);
+            return;
+        }
+        m_pkgLog->appendPlainText(QStringLiteral("[信息] 已复制: ") + targetExe);
+    }
+
+    m_pkgOutputDir = dir;
+    m_pkgLog->clear();
+    m_pkgLog->appendPlainText(QStringLiteral("开始打包..."));
+    m_pkgLog->appendPlainText(wd + QStringLiteral(" --dir \"") + dir + QStringLiteral("\" \"") + targetExe + QStringLiteral("\""));
+    m_pkgRunBtn->setEnabled(false);
+    m_pkgOpenBtn->setVisible(false);
+
+    m_pkgProc = new QProcess(this);
+    connect(m_pkgProc, &QProcess::readyReadStandardOutput, this, &MainWindow::onPkgOutput);
+    connect(m_pkgProc, &QProcess::readyReadStandardError,  this, &MainWindow::onPkgOutput);
+    connect(m_pkgProc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, &MainWindow::onPkgFinished);
+    m_pkgProc->setProcessChannelMode(QProcess::MergedChannels);
+    m_pkgProc->start(wd, {QStringLiteral("--dir"), dir, targetExe});
+}
+
+void MainWindow::onPkgOutput() {
+    if (!m_pkgProc) return;
+    QByteArray out = m_pkgProc->readAll();
+    m_pkgLog->moveCursor(QTextCursor::End);
+    m_pkgLog->insertPlainText(QString::fromLocal8Bit(out));
+    m_pkgLog->moveCursor(QTextCursor::End);
+}
+
+void MainWindow::onPkgFinished() {
+    TRACE;
+    if (!m_pkgProc) return;
+    int code = m_pkgProc->exitCode();
+    QProcess::ExitStatus status = m_pkgProc->exitStatus();
+    m_pkgProc->deleteLater();
+    m_pkgProc = nullptr;
+
+    m_pkgRunBtn->setEnabled(true);
+    if (status == QProcess::NormalExit && code == 0) {
+        m_pkgLog->appendPlainText(QStringLiteral("\n[完成] 打包成功！点击\"打开文件夹\"查看产物。"));
+        m_pkgOpenBtn->setVisible(true);
+        ui->statusbar->showMessage(QStringLiteral("打包完成"));
+    } else {
+        m_pkgLog->appendPlainText(QStringLiteral("\n[失败] 打包异常退出 (code=%1)").arg(code));
+        ui->statusbar->showMessage(QStringLiteral("打包失败"));
+    }
+}
+
+void MainWindow::onPkgOpenFolder() {
+    TRACE;
+    if (m_pkgOutputDir.isEmpty()) return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(m_pkgOutputDir));
+}
+
 void MainWindow::onSerialStatusChanged(const QString &msg) {
     TRACE << msg;
     ui->statusbar->showMessage(msg);
@@ -563,16 +964,28 @@ void MainWindow::onSerialStatusChanged(const QString &msg) {
 
 void MainWindow::onSkyBrowse() {
     TRACE;
-    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择天空/中继端固件"), "",
+    // 记忆上次浏览路径，下次直接定位到上次目录
+    QSettings fset(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString lastDir = fset.value(QStringLiteral("filedialog/sky/lastDir")).toString();
+    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择天空/中继端固件"), lastDir,
                                                 QStringLiteral("所有文件 (*)"));
-    if (!path.isEmpty()) uiFirmware->editSkyPath->setText(path);
+    if (!path.isEmpty()) {
+        uiFirmware->editSkyPath->setText(path);
+        fset.setValue(QStringLiteral("filedialog/sky/lastDir"), QFileInfo(path).absolutePath());
+    }
 }
 
 void MainWindow::onGroundBrowse() {
     TRACE;
-    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择地面端固件"), "",
+    // 记忆上次浏览路径
+    QSettings fset(QStringLiteral("lkwei"), QStringLiteral("fpv-pc-tool"));
+    QString lastDir = fset.value(QStringLiteral("filedialog/ground/lastDir")).toString();
+    QString path = QFileDialog::getOpenFileName(this, QStringLiteral("选择地面端固件"), lastDir,
                                                 QStringLiteral("所有文件 (*)"));
-    if (!path.isEmpty()) uiFirmware->editGroundPath->setText(path);
+    if (!path.isEmpty()) {
+        uiFirmware->editGroundPath->setText(path);
+        fset.setValue(QStringLiteral("filedialog/ground/lastDir"), QFileInfo(path).absolutePath());
+    }
 }
 
 void MainWindow::onSkyParse() {
@@ -650,10 +1063,17 @@ void MainWindow::onKeyCommand(const QString &name) {
     TRACE << "key=" << name;
     if (checkSerialConnected("keyCommand")) return;
 
-    int pressType = uiKey->comboPressType->currentIndex();
-    QByteArray packet = m_protocol->createKeyCommand(name, pressType);
-    logSend(QString("Key:%1 type:%2").arg(name).arg(pressType), packet);
+    // 功能键区：使用该按键固有按压类型（KEY_PRESS_TYPES 默认值），
+    // 通过传 -1 让 createKeyCommand 走默认，避免被自定义区的下拉框干扰
+    QByteArray packet = m_protocol->createKeyCommand(name, -1);
+    logSend(QString("Key:%1 type:%2").arg(name).arg(-1), packet);
     m_comm->sendData(packet);
+}
+
+// 无线参数页用户主动操作时调用：解除快捷指令抑制并清空无线历史缓冲
+void MainWindow::resetWirelessDisplay() {
+    m_wirelessSuppress = false;
+    m_wirelessBuf.clear();
 }
 
 void MainWindow::onSendCustomKey() {
@@ -678,14 +1098,16 @@ void MainWindow::onUpdateKeyPreview() {
 void MainWindow::onSetFreq() {
     TRACE;
     if (checkSerialConnected("setFreq")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     int band = uiWireless->comboBand->currentIndex();
-    int channel = uiWireless->spinChannel->value();
+    int channel = uiWireless->spinChannel->value() - 1;  // UI显示1开头, 实际下发从0开始
     int hop = uiWireless->comboHop->currentIndex();
     QByteArray values;
     values.append(static_cast<char>(band));
     values.append(static_cast<char>(channel));
     values.append(static_cast<char>(hop));
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_SET_CHANNEL_HOP, values);
+    previewWirelessCmd(WIRELESS_DATA_TYPE_SET_CHANNEL_HOP, values, QStringLiteral("Set Freq"));
     logSend(QString("SetFreq band=%1 ch=%2 hop=%3").arg(band).arg(channel).arg(hop), packet);
     m_comm->sendData(packet);
 }
@@ -693,7 +1115,9 @@ void MainWindow::onSetFreq() {
 void MainWindow::onGetFreq() {
     TRACE;
     if (checkSerialConnected("getFreq")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_CHANNEL_HOP, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_CHANNEL_HOP, QByteArray(), QStringLiteral("Get Freq"));
     logSend("GetFreq", packet);
     m_comm->sendData(packet);
 }
@@ -701,7 +1125,9 @@ void MainWindow::onGetFreq() {
 void MainWindow::onGetStatus() {
     TRACE;
     if (checkSerialConnected("getStatus")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_STATUS, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_STATUS, QByteArray(), QStringLiteral("Get Status Gnd"));
     logSend("GetStatus(Gnd)", packet);
     m_comm->sendData(packet);
 }
@@ -709,7 +1135,9 @@ void MainWindow::onGetStatus() {
 void MainWindow::onGetBbPwr() {
     TRACE;
     if (checkSerialConnected("getBbPwr")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_BB_PWR, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_BB_PWR, QByteArray(), QStringLiteral("Get BB Pwr"));
     logSend("GetBbPwr", packet);
     m_comm->sendData(packet);
 }
@@ -717,10 +1145,12 @@ void MainWindow::onGetBbPwr() {
 void MainWindow::onSetBbPwr() {
     TRACE;
     if (checkSerialConnected("setBbPwr")) return;
-    int idx = uiWireless->comboBbPwr->currentText().toInt();
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
+    int idx = uiWireless->comboBbPwr->currentData().toInt();
     QByteArray values;
     values.append(static_cast<char>(idx));
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_SET_BB_PWR, values);
+    previewWirelessCmd(WIRELESS_DATA_TYPE_SET_BB_PWR, values, QStringLiteral("Set BB Pwr"));
     logSend(QString("SetBbPwr idx=%1").arg(idx), packet);
     m_comm->sendData(packet);
 }
@@ -728,7 +1158,9 @@ void MainWindow::onSetBbPwr() {
 void MainWindow::onGetStatusSky() {
     TRACE;
     if (checkSerialConnected("getStatusSky")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_STATUS_SKY, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_STATUS_SKY, QByteArray(), QStringLiteral("Get Status Sky"));
     logSend("GetStatus(Sky)", packet);
     m_comm->sendData(packet);
 }
@@ -736,7 +1168,9 @@ void MainWindow::onGetStatusSky() {
 void MainWindow::onGetDistance() {
     TRACE;
     if (checkSerialConnected("getDistance")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_DISTANCE, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_DISTANCE, QByteArray(), QStringLiteral("Get Distance"));
     logSend("GetDistance", packet);
     m_comm->sendData(packet);
 }
@@ -747,14 +1181,16 @@ void MainWindow::onGetDistance() {
 void MainWindow::onSetRelayFreq() {
     TRACE;
     if (checkSerialConnected("setRelayFreq")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     int band = uiWireless->comboRelayBand->currentIndex();
-    int channel = uiWireless->spinRelayChannel->value();
+    int channel = uiWireless->spinRelayChannel->value() - 1;  // UI显示1开头, 实际下发从0开始
     int hop = uiWireless->comboRelayHop->currentIndex();
     QByteArray values;
     values.append(static_cast<char>(band));
     values.append(static_cast<char>(channel));
     values.append(static_cast<char>(hop));
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_SET_RELAY_CHANNEL_HOP, values);
+    previewWirelessCmd(WIRELESS_DATA_TYPE_SET_RELAY_CHANNEL_HOP, values, QStringLiteral("Set Relay Freq"));
     logSend(QString("SetRelayFreq band=%1 ch=%2 hop=%3").arg(band).arg(channel).arg(hop), packet);
     m_comm->sendData(packet);
 }
@@ -762,7 +1198,9 @@ void MainWindow::onSetRelayFreq() {
 void MainWindow::onGetRelayFreq() {
     TRACE;
     if (checkSerialConnected("getRelayFreq")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_CHANNEL_HOP, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_RELAY_CHANNEL_HOP, QByteArray(), QStringLiteral("Get Relay Freq"));
     logSend("GetRelayFreq", packet);
     m_comm->sendData(packet);
 }
@@ -770,7 +1208,9 @@ void MainWindow::onGetRelayFreq() {
 void MainWindow::onGetRelayStatus() {
     TRACE;
     if (checkSerialConnected("getRelayStatus")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_STATUS, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_RELAY_STATUS, QByteArray(), QStringLiteral("Get Relay Status"));
     logSend("GetRelayStatus", packet);
     m_comm->sendData(packet);
 }
@@ -778,7 +1218,9 @@ void MainWindow::onGetRelayStatus() {
 void MainWindow::onGetRelayBbPwr() {
     TRACE;
     if (checkSerialConnected("getRelayBbPwr")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_BB_PWR, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_RELAY_BB_PWR, QByteArray(), QStringLiteral("Get Relay BB Pwr"));
     logSend("GetRelayBbPwr", packet);
     m_comm->sendData(packet);
 }
@@ -786,10 +1228,12 @@ void MainWindow::onGetRelayBbPwr() {
 void MainWindow::onSetRelayBbPwr() {
     TRACE;
     if (checkSerialConnected("setRelayBbPwr")) return;
-    int idx = uiWireless->comboRelayBbPwr->currentText().toInt();
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
+    int idx = uiWireless->comboRelayBbPwr->currentData().toInt();
     QByteArray values;
     values.append(static_cast<char>(idx));
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_SET_RELAY_BB_PWR, values);
+    previewWirelessCmd(WIRELESS_DATA_TYPE_SET_RELAY_BB_PWR, values, QStringLiteral("Set Relay BB Pwr"));
     logSend(QString("SetRelayBbPwr idx=%1").arg(idx), packet);
     m_comm->sendData(packet);
 }
@@ -797,7 +1241,9 @@ void MainWindow::onSetRelayBbPwr() {
 void MainWindow::onGetRelayGndDist() {
     TRACE;
     if (checkSerialConnected("getRelayGndDist")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_GND_DISTANCE, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_RELAY_GND_DISTANCE, QByteArray(), QStringLiteral("Get Relay Gnd Dist"));
     logSend("GetRelayGndDist", packet);
     m_comm->sendData(packet);
 }
@@ -805,46 +1251,11 @@ void MainWindow::onGetRelayGndDist() {
 void MainWindow::onGetRelaySkyDist() {
     TRACE;
     if (checkSerialConnected("getRelaySkyDist")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
     QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_SKY_DISTANCE, QByteArray());
+    previewWirelessCmd(WIRELESS_DATA_TYPE_GET_RELAY_SKY_DISTANCE, QByteArray(), QStringLiteral("Get Relay Sky Dist"));
     logSend("GetRelaySkyDist", packet);
     m_comm->sendData(packet);
-}
-
-void MainWindow::onGetRelayOsd() {
-    TRACE;
-    if (checkSerialConnected("getRelayOsd")) return;
-    // 中继OSD为查询命令 0xA7
-    QByteArray values;
-    QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_GET_RELAY_OSD_DATA, values);
-    logSend("GetRelayOsd", packet);
-    m_comm->sendData(packet);
-
-    // ---- 在无线参数页面显示协议格式解析 ----
-    QString fmt;
-    fmt += "===== 中继OSD请求协议包 (0xA7) =====\n";
-    for (int i = 0; i < packet.size(); ++i) {
-        quint8 b = static_cast<quint8>(packet.at(i));
-        QString desc;
-        if (i == 0) desc = " 头(高)";
-        else if (i == 1) desc = " 头(低)";
-        else if (i == 2) desc = " 命令(0xA2=查询)";
-        else if (i == 3) desc = " 数据长度(高)";
-        else if (i == 4) desc = " 数据长度(低)";
-        else if (i == 5) desc = " 数据类型(0xA7=中继OSD)";
-        else if (i >= 6 && i <= 11) desc = QString(" 保留%1").arg(i - 5);
-        else if (i == packet.size() - 4) desc = " 校验和(高)";
-        else if (i == packet.size() - 3) desc = " 校验和(低)";
-        else if (i == packet.size() - 2) desc = " 尾(0x0D)";
-        else if (i == packet.size() - 1) desc = " 尾(0x0A)";
-        fmt += QString("  [%1] 0x%2%3\n")
-                   .arg(i, 2, 10, QChar('0'))
-                   .arg(b, 2, 16, QChar('0'))
-                   .arg(desc);
-    }
-    uiWireless->textStatus->append(fmt);
-    QTextCursor c = uiWireless->textStatus->textCursor();
-    c.movePosition(QTextCursor::End);
-    uiWireless->textStatus->setTextCursor(c);
 }
 
 // =====================================================================
@@ -862,11 +1273,25 @@ void MainWindow::onGetOsdData() {
         static_cast<wireless_data_type_t>(OSD_CMD_TYPE), values);
     logSend("GetOsdData", packet);
     m_comm->sendData(packet);
+}
 
-    // ---- 在 OSD 页面显示协议格式解析 ----
+// =====================================================================
+// 无线参数页 0x57 OSD 获取（输出到无线页底部打印框 textStatus）
+// =====================================================================
+void MainWindow::onGetOsdDataWireless() {
+    TRACE;
+    if (checkSerialConnected("getOsdDataWireless")) return;
+    resetWirelessDisplay();   // user wireless op: clear suppress + buf
+    QByteArray values;
+    QByteArray packet = m_protocol->createWirelessCommand(
+        static_cast<wireless_data_type_t>(OSD_CMD_TYPE), values);  // OSD_CMD_TYPE = 0x57
+    previewWirelessCmd(static_cast<wireless_data_type_t>(OSD_CMD_TYPE), values, QStringLiteral("Get OSD Data (0x57)"));
+    logSend("GetOsdDataWireless", packet);
+    m_comm->sendData(packet);
+
+    // ---- 在无线页底部打印框显示协议格式解析 ----
     QString fmt;
-    // 逐字节描述
-    fmt += "===== OSD 请求协议包 =====\n";
+    fmt += "===== 获取OSD数据请求协议包 (0x57) =====\n";
     for (int i = 0; i < packet.size(); ++i) {
         quint8 b = static_cast<quint8>(packet.at(i));
         QString desc;
@@ -886,19 +1311,16 @@ void MainWindow::onGetOsdData() {
                    .arg(b, 2, 16, QChar('0'))
                    .arg(desc);
     }
-    // 校验和计算验证
-    int dataLen = (static_cast<quint8>(packet.at(3)) << 8) | static_cast<quint8>(packet.at(4));
-    QByteArray dataContent = packet.mid(5, dataLen);
-    quint16 calcCS = m_protocol->calculateChecksum(dataContent);
-    fmt += QString("数据内容(%1 bytes): %2\n").arg(dataLen)
-               .arg(QString::fromLatin1(dataContent.toHex(' ').toUpper()));
-    fmt += QString("校验和(计算): 0x%1\n").arg(calcCS, 4, 16, QChar('0'));
-    fmt += QString("校验和(包内): 0x%1%2\n")
-               .arg(static_cast<quint8>(packet.at(packet.size() - 4)), 2, 16, QChar('0'))
-               .arg(static_cast<quint8>(packet.at(packet.size() - 3)), 2, 16, QChar('0'));
-    fmt += QString("总长度: %1 bytes\n").arg(packet.size());
+    uiWireless->textStatus->append(fmt);
+    QTextCursor c = uiWireless->textStatus->textCursor();
+    c.movePosition(QTextCursor::End);
+    uiWireless->textStatus->setTextCursor(c);
+}
 
-    uiOsd->textOsdInfo->setText(fmt);
+void MainWindow::onClearOsdDataWireless() {
+    TRACE;
+    m_wirelessBuf.clear();
+    uiWireless->textStatus->clear();
 }
 
 void MainWindow::onClearOsd() {
@@ -976,7 +1398,7 @@ void MainWindow::onFcTypeChanged(int /*index*/) {
         loaded = loadOsdFont(QString("WS_QUIC_%1.png").arg(fontPixel), fontPixel);
         break;
     case 7: // Custom → 使用 osdChars (1080p 36x36 独立字符)
-        loaded = m_osdGrid->loadCharImages(":/osdchars", 256);
+        loaded = m_osdGrid->loadCharImages(":/osdchars", 512);
         if (loaded) {
             uiOsd->textOsdInfo->append("✓ 切换字体: osdChars (Custom)");
         }
@@ -988,7 +1410,7 @@ void MainWindow::onFcTypeChanged(int /*index*/) {
     if (!loaded) {
         uiOsd->textOsdInfo->append("⚠ 字体加载失败，使用 osdChars 回退");
         qWarning() << "[OSD] onFcTypeChanged: 字体加载失败, fcIndex=" << fcIndex << "使用osdChars回退";
-        m_osdGrid->loadCharImages(":/osdchars", 256);
+        m_osdGrid->loadCharImages(":/osdchars", 512);
     }
 }
 
@@ -1032,6 +1454,29 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
         }
         m_osdGrid->setCharacterMap(m_osdCharMap);
 
+        // ---- 在数据详情输出 OSD 20x53 矩阵（与快捷指令页 printOsdMatrix 一致）----
+        uiOsd->textOsdInfo->append("--- OSD 20x53 矩阵 ---");
+        for (int row = 0; row < 20; ++row) {
+            QString line;
+            bool hasContent = false;
+            for (int col = 0; col < 53; ++col) {
+                quint16 v = m_osdCharMap[row][col];
+                quint8 ch = static_cast<quint8>(v & 0xFF);
+                if (ch == 0) {
+                    line += ' ';
+                } else if (ch >= 0x20 && ch <= 0x7E) {
+                    line += QChar(ch);
+                    hasContent = true;
+                } else {
+                    line += QStringLiteral("[%1]").arg(ch, 2, 16, QChar('0'));
+                    hasContent = true;
+                }
+            }
+            if (hasContent)
+                uiOsd->textOsdInfo->append(QStringLiteral("R %1: %2").arg(row).arg(line));
+        }
+        uiOsd->textOsdInfo->append("--- 矩阵结束 ---");
+
         // 统计非零字符（活跃字符数）
         int activeCount = 0;
         quint16 minVal = 0xFFFF, maxVal = 0;
@@ -1068,17 +1513,53 @@ void MainWindow::onOsdDataReceived(const QByteArray &dataContent) {
     }
 }
 
-void MainWindow::onUpdateFreqPreview() {
+void MainWindow::previewWirelessCmd(wireless_data_type_t type, const QByteArray &values, const QString &name) {
     TRACE;
-    int band = uiWireless->comboBand->currentIndex();
-    int channel = uiWireless->spinChannel->value();
-    int hop = uiWireless->comboHop->currentIndex();
-    QByteArray values;
-    values.append(static_cast<char>(band));
-    values.append(static_cast<char>(channel));
-    values.append(static_cast<char>(hop));
-    QByteArray packet = m_protocol->createWirelessCommand(WIRELESS_DATA_TYPE_SET_CHANNEL_HOP, values);
-    uiWireless->editFreqPreview->setText(packet.toHex(' ').toUpper());
+    QByteArray packet = m_protocol->createWirelessCommand(type, values);
+    m_previewType = static_cast<int>(type);
+    uiWireless->editCmdPreview->setText(
+        QStringLiteral("%1 : %2").arg(name).arg(QString::fromLatin1(packet.toHex(' ').toUpper())));
+}
+
+void MainWindow::onUpdatePreviewFromParams() {
+    TRACE;
+    if (m_previewType < 0) {
+        uiWireless->editCmdPreview->clear();
+        return;
+    }
+    int band     = uiWireless->comboBand->currentIndex();
+    int channel  = uiWireless->spinChannel->value() - 1;     // UI显示1开头, 实际下发从0开始
+    int hop      = uiWireless->comboHop->currentIndex();
+    int bbPwr    = uiWireless->comboBbPwr->currentText().split(' ').at(0).toInt();
+    int rBand    = uiWireless->comboRelayBand->currentIndex();
+    int rChannel = uiWireless->spinRelayChannel->value() - 1; // UI显示1开头, 实际下发从0开始
+    int rHop     = uiWireless->comboRelayHop->currentIndex();
+    int rBbPwr   = uiWireless->comboRelayBbPwr->currentText().split(' ').at(0).toInt();
+
+    QByteArray v;
+    QString name;
+    switch (m_previewType) {
+    case WIRELESS_DATA_TYPE_SET_CHANNEL_HOP:
+        v.append(static_cast<char>(band)); v.append(static_cast<char>(channel)); v.append(static_cast<char>(hop));
+        name = QStringLiteral("Set Freq");
+        break;
+    case WIRELESS_DATA_TYPE_SET_BB_PWR:
+        v.append(static_cast<char>(bbPwr));
+        name = QStringLiteral("Set BB Pwr");
+        break;
+    case WIRELESS_DATA_TYPE_SET_RELAY_CHANNEL_HOP:
+        v.append(static_cast<char>(rBand)); v.append(static_cast<char>(rChannel)); v.append(static_cast<char>(rHop));
+        name = QStringLiteral("Set Relay Freq");
+        break;
+    case WIRELESS_DATA_TYPE_SET_RELAY_BB_PWR:
+        v.append(static_cast<char>(rBbPwr));
+        name = QStringLiteral("Set Relay BB Pwr");
+        break;
+    default:
+        // 无参数命令：参数变化不改变包内容
+        return;
+    }
+    previewWirelessCmd(static_cast<wireless_data_type_t>(m_previewType), v, name);
 }
 
 void MainWindow::onCheckFormat() {
@@ -1299,12 +1780,47 @@ void MainWindow::onDataReceived(const QByteArray &data) {
     }
 
     // 解析数据包，如果是无线查询/设置响应则显示到 textStatus
-    QVariantMap parsed = m_protocol->parsePacket(data);
-    if (parsed.isEmpty()) return;
+    // 注意：串口数据可能被拆成多段 readyRead，之前用单次 data 解析，
+    // 分包时首包不完整会直接 return，导致“第一次点击没反应、再点一次才有”。
+    // 修复：用 m_wirelessBuf 累积，再从缓冲中提取完整包解析。
+    m_wirelessBuf.append(data);
 
-    quint8 cmd = static_cast<quint8>(parsed.value("command").toUInt());
-    // 无线命令响应的 cmd 为 0xA2(查询) 或 0x22(设置)
-    if (cmd != 0xA2 && cmd != 0x22) return;
+    QVariantMap parsed;
+    quint8 cmd = 0;
+    // 从累积缓冲中尝试提取一个完整包（FE EF cmd lenH lenL ... csH csL 0D 0A）
+    while (m_wirelessBuf.size() >= 9) {
+        // 定位 FE EF 头
+        int headerPos = -1;
+        for (int i = 0; i < m_wirelessBuf.size() - 1; ++i) {
+            if ((quint8)m_wirelessBuf.at(i) == 0xFE && (quint8)m_wirelessBuf.at(i + 1) == 0xEF) {
+                headerPos = i;
+                break;
+            }
+        }
+        if (headerPos < 0) { m_wirelessBuf.clear(); break; }
+        if (headerPos > 0) m_wirelessBuf.remove(0, headerPos);
+
+        const quint8 *raw = reinterpret_cast<const quint8*>(m_wirelessBuf.constData());
+        if (m_wirelessBuf.size() < 9) break;
+
+        int dataLen = (raw[3] << 8) | raw[4];
+        if (dataLen <= 0 || dataLen > 2048) { m_wirelessBuf.remove(0, 5); continue; }
+
+        int fullSize = 5 + dataLen + 2 + 2; // 头5 + data_content + checksum2 + footer2
+        if (m_wirelessBuf.size() < fullSize) break; // 等完整包
+
+        // 取完整包解析
+        QByteArray full = m_wirelessBuf.mid(0, fullSize);
+        m_wirelessBuf.remove(0, fullSize);
+
+        parsed = m_protocol->parsePacket(full);
+        if (parsed.isEmpty()) continue; // 包损坏，继续找下一个
+
+        cmd = static_cast<quint8>(parsed.value("command").toUInt());
+        // 无线命令响应的 cmd 为 0xA2(查询) 或 0x22(设置)
+        if (cmd != 0xA2 && cmd != 0x22) continue;
+        break; // 找到有效的无线响应
+    }
 
     QByteArray content = parsed.value("data_content").toByteArray();
     if (content.isEmpty()) return;
@@ -1331,8 +1847,12 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             int band    = static_cast<quint8>(content.at(1));
             int channel = static_cast<quint8>(content.at(2));
             int hop     = static_cast<quint8>(content.at(3));
+            // 回填频点参数到界面 (UI显示1开头, 实际值0开头)
+            uiWireless->comboBand->setCurrentIndex(band);
+            uiWireless->spinChannel->setValue(channel + 1);
+            uiWireless->comboHop->setCurrentIndex(hop);
             displayText += QString("频段: %1 (%2)\n").arg(band).arg(bandToLetter(band));
-            displayText += QString("信道: %1 (chn%2)\n").arg(channel).arg(channel+1);
+            displayText += QString("通道: %1\n").arg(channel + 1);
             displayText += QString("跳频模式: %1\n").arg(hop ? QStringLiteral("跳频") : QStringLiteral("定频"));
         }
         break;
@@ -1365,15 +1885,15 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             combo->blockSignals(true);
             combo->clear();
             QStringList settable;
-            for (int i = 0; i < 32; ++i) {
+            for (int i = 0; i < 20; ++i) {
                 if (bitmap & (1U << i)) {
-                    combo->addItem(QString::number(i));
-                    settable << QString::number(i);
+                    combo->addItem(QString::fromUtf8(bbPwrNames[i]), i);
+                    settable << QString::fromUtf8(bbPwrNames[i]);
                 }
             }
             combo->blockSignals(false);
             // 默认选中当前功率索引
-            int curIdx = combo->findText(QString::number(pwrIdx));
+            int curIdx = combo->findData(pwrIdx);
             if (curIdx >= 0) combo->setCurrentIndex(curIdx);
 
             if (!settable.isEmpty())
@@ -1425,8 +1945,12 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             int band     = static_cast<quint8>(content.at(1));
             int channel  = static_cast<quint8>(content.at(2));
             int hop      = static_cast<quint8>(content.at(3));
+            // 回填中继频点参数到界面 (UI显示1开头, 实际值0开头)
+            uiWireless->comboRelayBand->setCurrentIndex(band);
+            uiWireless->spinRelayChannel->setValue(channel + 1);
+            uiWireless->comboRelayHop->setCurrentIndex(hop);
             displayText += QString("频段: %1 (%2)\n").arg(band).arg(bandToLetter(band));
-            displayText += QString("频道: %1 (chn%2)\n").arg(channel).arg(channel + 1);
+            displayText += QString("通道: %1\n").arg(channel + 1);
             displayText += QString("跳频模式: %1\n").arg(hop ? QStringLiteral("跳频") : QStringLiteral("定频"));
         }
         break;
@@ -1462,15 +1986,15 @@ void MainWindow::onDataReceived(const QByteArray &data) {
             combo->blockSignals(true);
             combo->clear();
             QStringList settable;
-            for (int i = 0; i < 32; ++i) {
+            for (int i = 0; i < 20; ++i) {
                 if (bitmap & (1U << i)) {
-                    combo->addItem(QString::number(i));
-                    settable << QString::number(i);
+                    combo->addItem(QString::fromUtf8(bbPwrNames[i]), i);
+                    settable << QString::fromUtf8(bbPwrNames[i]);
                 }
             }
             combo->blockSignals(false);
             // 默认选中当前功率索引
-            int curIdx = combo->findText(QString::number(pwrIdx));
+            int curIdx = combo->findData(pwrIdx);
             if (curIdx >= 0) combo->setCurrentIndex(curIdx);
 
             if (!settable.isEmpty())
@@ -1520,11 +2044,15 @@ void MainWindow::onDataReceived(const QByteArray &data) {
         break;
     }
 
-    uiWireless->textStatus->append(displayText);
-    // 自动滚动到最新
-    QTextCursor c = uiWireless->textStatus->textCursor();
-    c.movePosition(QTextCursor::End);
-    uiWireless->textStatus->setTextCursor(c);
+    if (!m_wirelessSuppress) {
+        uiWireless->textStatus->append(displayText);
+        // 自动滚动到最新
+        QTextCursor c = uiWireless->textStatus->textCursor();
+        c.movePosition(QTextCursor::End);
+        uiWireless->textStatus->setTextCursor(c);
+    }
+    // 快捷指令(F0)接收期间(m_wirelessSuppress=true)不打印到无线 textStatus，
+    // 但仍完成了组合框更新（0x51频点/0x53功率等），满足"快捷指令数据更新到频率/功率设置"。
 }
 
 void MainWindow::onLanguageChanged(int index) {
@@ -1863,7 +2391,4 @@ void MainWindow::visualizeRawOsdData()
 
     qDebug().noquote() << "未找到 OSD 数据包，当前" << m_osdRawData.size() << "bytes";
 }
-
-
-
 
