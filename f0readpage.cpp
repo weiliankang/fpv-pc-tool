@@ -51,13 +51,12 @@ F0ReadPage::F0ReadPage(SerialCommunicator *comm, QWidget *parent)
     m_pollTimer->setSingleShot(false);
     connect(m_pollTimer, &QTimer::timeout, this, &F0ReadPage::onPollTimer);
 
-    // 快捷指令批次收尾定时器：收到帧后无新帧一段时间即把本批解析汇总输出
-    // 650ms：快捷指令响应通常集中在发送后几十~一两百毫秒内到达，
-    //        定时器要留足覆盖间隔(避免解析不全)，又不能太长让用户久等。
-    //        sendF0Command 发送前还会兜底 flush 上一批，自动轮询场景不依赖此定时器。
+    // 快捷指令批次"空闲检测"定时器：收到帧后若无新帧很快即把本批解析汇总输出。
+    // 不用固定长定时器：响应帧间隔实测仅几~几十ms，此定时器仅用于判定"一批响应已
+    // 收完(无新帧到达)"，设 80ms 即响应一停就几乎立即输出，对用户无感知延迟。
     m_batchFlushTimer = new QTimer(this);
     m_batchFlushTimer->setSingleShot(true);
-    m_batchFlushTimer->setInterval(650);
+    m_batchFlushTimer->setInterval(80);
     connect(m_batchFlushTimer, &QTimer::timeout, this, &F0ReadPage::flushBatchParse);
 
     // ---- OSD 逐帧播放器 ----
