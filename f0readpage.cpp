@@ -52,10 +52,12 @@ F0ReadPage::F0ReadPage(SerialCommunicator *comm, QWidget *parent)
     connect(m_pollTimer, &QTimer::timeout, this, &F0ReadPage::onPollTimer);
 
     // 快捷指令批次收尾定时器：收到帧后无新帧一段时间即把本批解析汇总输出
-    // 2500ms：快捷指令会返回地面端+中继端+OSD 共十余条响应，需给足到达时间
+    // 650ms：快捷指令响应通常集中在发送后几十~一两百毫秒内到达，
+    //        定时器要留足覆盖间隔(避免解析不全)，又不能太长让用户久等。
+    //        sendF0Command 发送前还会兜底 flush 上一批，自动轮询场景不依赖此定时器。
     m_batchFlushTimer = new QTimer(this);
     m_batchFlushTimer->setSingleShot(true);
-    m_batchFlushTimer->setInterval(2500);
+    m_batchFlushTimer->setInterval(650);
     connect(m_batchFlushTimer, &QTimer::timeout, this, &F0ReadPage::flushBatchParse);
 
     // ---- OSD 逐帧播放器 ----
@@ -594,7 +596,7 @@ QString F0ReadPage::parseCommandDetail(quint8 cmd, const QByteArray &payload) co
                            (static_cast<quint8>(payload.at(2)) << 8) |
                            (static_cast<quint8>(payload.at(3)) << 16) |
                            (static_cast<quint8>(payload.at(4)) << 24);
-            t = QString("距离: %1 m").arg(dist);
+            t = QString("天空端距离: %1 m").arg(dist);
         }
         break;
     case 0x57: // OSD数据响应(矩阵在别处单独打印)
@@ -628,7 +630,7 @@ QString F0ReadPage::parseCommandDetail(quint8 cmd, const QByteArray &payload) co
             int skyRssi2 = static_cast<signed char>(payload.at(4));
             int apConn = static_cast<quint8>(payload.at(5));
             int devConn = static_cast<quint8>(payload.at(6));
-            t = QString("地面链路 RSSI1: %1\n地面链路 RSSI2: %2\n天空链路 RSSI1: %3\n天空链路 RSSI2: %4\nAP 基带连接: %5\n设备基带连接: %6")
+            t = QString("中继地面链路 RSSI1: %1\n中继地面链路 RSSI2: %2\n中继天空链路 RSSI1: %3\n中继天空链路 RSSI2: %4\n中继天空连接: %5\n中继地面连接: %6")
                     .arg(gndRssi1).arg(gndRssi2).arg(skyRssi1).arg(skyRssi2)
                     .arg(apConn ? QStringLiteral("已连接") : QStringLiteral("未连接"))
                     .arg(devConn ? QStringLiteral("已连接") : QStringLiteral("未连接"));
