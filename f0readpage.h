@@ -69,7 +69,7 @@ private slots:
 
 private:
     // 构建并发送 F0 命令
-    void sendF0Command();
+    void sendF0Command(bool showConnectDialog = false);
     quint16 calcChecksum(const QByteArray &data) const;
 
     // ---- 原始数据记录到文件（带时间戳）----

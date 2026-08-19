@@ -14,6 +14,7 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QSettings>
+#include <QMessageBox>
 
 // =====================================================================
 // 协议常量（与 android 上位机 asvrx_async.c / 下位机 fpv_relay.c 一致）
@@ -195,7 +196,7 @@ quint16 F0ReadPage::calcChecksum(const QByteArray &data) const
 // 构建并发送 F0 命令
 //   FE EF A2 00 08 F0 00 00 00 00 00 00 00 00 CS CS 0D 0A
 // ---------------------------------------------------------------------
-void F0ReadPage::sendF0Command()
+void F0ReadPage::sendF0Command(bool showConnectDialog)
 {
     // 上一批(F0)若还有未输出的解析汇总，先输出，再开始新一批
     if (m_batchFlushTimer && m_batchFlushTimer->isActive())
@@ -241,6 +242,12 @@ void F0ReadPage::sendF0Command()
 
     if (!m_comm->sendData(tx)) {
         logLine(QStringLiteral("[错误] 串口未连接或发送失败！"));
+        if (showConnectDialog) {
+            QMessageBox::warning(this,
+                QStringLiteral("串口未连接"),
+                QStringLiteral("快捷指令发送失败：串口未连接或不可用。\n"
+                               "请先在“串口工具”页连接设备后再试。"));
+        }
     }
 
     // 通知 MainWindow 清空无线参数页历史缓冲，避免快捷指令的历史响应堆积污染无线打印栏
@@ -252,7 +259,7 @@ void F0ReadPage::sendF0Command()
 // ---------------------------------------------------------------------
 void F0ReadPage::onSendF0()
 {
-    sendF0Command();
+    sendF0Command(true);
 }
 
 // ---------------------------------------------------------------------
