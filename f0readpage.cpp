@@ -1169,12 +1169,21 @@ void F0ReadPage::logLine(const QString &line)
 QString F0ReadPage::commandName(quint8 cmd)
 {
     switch (cmd) {
+    case 0x50: return QStringLiteral("设置频点");
     case 0x51: return QStringLiteral("频率(Freq)");
     case 0x52: return QStringLiteral("无线状态(Status)");
     case 0x53: return QStringLiteral("功率(BB Pwr)");
     case 0x55: return QStringLiteral("天空端状态(Sky)");
     case 0x56: return QStringLiteral("距离(Distance)");
     case 0x57: return QStringLiteral("OSD数据");
+    case 0xA0: return QStringLiteral("设置中继频点");
+    case 0xA1: return QStringLiteral("中继频率(Relay Freq)");
+    case 0xA2: return QStringLiteral("中继状态(Relay Status)");
+    case 0xA3: return QStringLiteral("中继功率(Relay BB Pwr)");
+    case 0xA4: return QStringLiteral("设置中继功率");
+    case 0xA5: return QStringLiteral("中继-地面距离");
+    case 0xA6: return QStringLiteral("中继-天空距离");
+    case 0xA7: return QStringLiteral("中继OSD数据");
     default:   return QStringLiteral("未知");
     }
 }
